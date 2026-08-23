@@ -67,7 +67,21 @@ nlu:
     - switch to another document
     - use the first document
     - use the second document
+    - switch to the 1st doc
+    - switch to the 2nd doc
+    - switch to 1
+    - switch to 2
+    - switch to first
+    - switch to second
+    - use document 1
+    - use document 2
+    - open the second document
+    - select the first file
+    - make the second file active
     - switch back to README
+    - switch to README.md
+    - switch to API.md
+    - switch to API docs
     - change the active document
     - select another document
     - use my latest uploaded document
@@ -219,3 +233,4 @@ nlu:
     - extremly sad
     - so saad
     - so sad
+

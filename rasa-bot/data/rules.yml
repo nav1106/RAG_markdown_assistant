@@ -11,15 +11,25 @@ rules:
     - intent: provide_markdown_url
     - action: action_load_markdown
 
+- rule: List loaded documents
+  steps:
+    - intent: list_documents
+    - action: action_list_documents
+
+- rule: Switch active document
+  steps:
+    - intent: switch_document
+    - action: action_switch_document
+
 - rule: Say goodbye anytime the user says goodbye
   steps:
-  - intent: goodbye
-  - action: utter_goodbye
+    - intent: goodbye
+    - action: utter_goodbye
 
 - rule: Say 'I am a bot' anytime the user challenges
   steps:
-  - intent: bot_challenge
-  - action: utter_iamabot
+    - intent: bot_challenge
+    - action: utter_iamabot
 
 - rule: Explain what the bot can do
   steps:
@@ -30,8 +40,8 @@ rules:
   steps:
     - intent: nlu_fallback
     - action: utter_fallback
--
- rule: Ask for markdown URL when user wants to load a document
+
+- rule: Ask for markdown URL when user wants to load a document
   steps:
     - intent: request_load_document
     - action: utter_ask_markdown_url

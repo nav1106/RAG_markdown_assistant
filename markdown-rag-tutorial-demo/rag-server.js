@@ -1,4 +1,5 @@
-﻿import express from "express";
+﻿import crypto from "crypto";
+import express from "express";
 import fetch from "node-fetch";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
@@ -52,8 +53,110 @@ function getUserId(value) {
   return typeof value === "string" && value.trim() ? value.trim() : DEFAULT_USER_ID;
 }
 
+function getOrCreateSession(userId) {
+  if (!userSessions.has(userId)) {
+    userSessions.set(userId, {
+      documents: new Map(),
+      activeDocumentId: null,
+    });
+  }
+
+  return userSessions.get(userId);
+}
+
 function getSession(userId) {
   return userSessions.get(userId) || null;
+}
+
+function getDocumentName(url) {
+  try {
+    const parsedUrl = new URL(url);
+    const pathParts = parsedUrl.pathname.split("/").filter(Boolean);
+    return decodeURIComponent(pathParts.at(-1) || "markdown-document.md");
+  } catch {
+    return "markdown-document.md";
+  }
+}
+
+function createDocumentId(url, userId) {
+  const name = getDocumentName(url)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "document";
+  const hash = crypto
+    .createHash("sha1")
+    .update(`${userId}:${url}`)
+    .digest("hex")
+    .slice(0, 8);
+
+  return `${name}-${hash}`;
+}
+
+function serializeDocument(document, activeDocumentId) {
+  return {
+    documentId: document.documentId,
+    name: document.name,
+    sourceUrl: document.sourceUrl,
+    chunkCount: document.chunkCount,
+    loadedAt: document.loadedAt,
+    isActive: document.documentId === activeDocumentId,
+  };
+}
+
+function listDocuments(userId) {
+  const session = getSession(userId);
+
+  if (!session) {
+    return [];
+  }
+
+  return Array.from(session.documents.values()).map((document) =>
+    serializeDocument(document, session.activeDocumentId)
+  );
+}
+
+function findDocument(session, identifier) {
+  if (!session || !identifier) return null;
+
+  const normalizedIdentifier = String(identifier).trim().toLowerCase();
+  if (!normalizedIdentifier) return null;
+
+  if (/^\d+$/.test(normalizedIdentifier)) {
+    const index = Number(normalizedIdentifier) - 1;
+    return Array.from(session.documents.values())[index] || null;
+  }
+
+  if (session.documents.has(identifier)) {
+    return session.documents.get(identifier);
+  }
+
+  return Array.from(session.documents.values()).find((document) => {
+    const name = document.name.toLowerCase();
+    const id = document.documentId.toLowerCase();
+    return id === normalizedIdentifier || name === normalizedIdentifier || name.includes(normalizedIdentifier);
+  }) || null;
+}
+
+function switchActiveDocument(userId, identifier) {
+  const session = getSession(userId);
+
+  if (!session || session.documents.size === 0) {
+    throw new Error("No documents are loaded for this user yet.");
+  }
+
+  const document = findDocument(session, identifier);
+
+  if (!document) {
+    throw new Error("I could not find that document for this user.");
+  }
+
+  session.activeDocumentId = document.documentId;
+
+  return {
+    userId,
+    activeDocument: serializeDocument(document, session.activeDocumentId),
+    documents: listDocuments(userId),
+  };
 }
 
 async function downloadMarkdown(url) {
@@ -77,29 +180,36 @@ async function buildVectorStoreFromMarkdown(url, userId) {
     separators: ["\n\n", "\n", " ", ""],
   });
 
+  const documentId = createDocumentId(url, userId);
+  const name = getDocumentName(url);
+
   const docs = [
     new Document({
       pageContent: markdown,
-      metadata: { source: url, userId },
+      metadata: { source: url, userId, documentId, name },
     }),
   ];
 
   const chunks = await splitter.splitDocuments(docs);
   const vectorStore = await MemoryVectorStore.fromDocuments(chunks, embeddings);
+  const session = getOrCreateSession(userId);
 
-  const session = {
+  const loadedDocument = {
+    documentId,
+    name,
+    sourceUrl: url,
     vectorStore,
-    activeSourceUrl: url,
-    activeChunkCount: chunks.length,
+    chunkCount: chunks.length,
     loadedAt: new Date().toISOString(),
   };
 
-  userSessions.set(userId, session);
+  session.documents.set(documentId, loadedDocument);
+  session.activeDocumentId = documentId;
 
   return {
     userId,
-    sourceUrl: session.activeSourceUrl,
-    chunkCount: session.activeChunkCount,
+    document: serializeDocument(loadedDocument, session.activeDocumentId),
+    documents: listDocuments(userId),
   };
 }
 
@@ -122,16 +232,24 @@ function normalizeModelResponse(response) {
   return String(response.content ?? "");
 }
 
-async function answerQuestion(question, userId) {
+async function answerQuestion(question, userId, documentId) {
   const session = getSession(userId);
 
-  if (!session?.vectorStore) {
+  if (!session || session.documents.size === 0) {
     throw new Error(
       "No markdown document is loaded for this user yet. Call POST /load-document first."
     );
   }
 
-  const retriever = session.vectorStore.asRetriever({ k: 5 });
+  const activeDocument = documentId
+    ? findDocument(session, documentId)
+    : session.documents.get(session.activeDocumentId);
+
+  if (!activeDocument?.vectorStore) {
+    throw new Error("No active markdown document is available for this user.");
+  }
+
+  const retriever = activeDocument.vectorStore.asRetriever({ k: 5 });
   const relevantDocs = await retriever.getRelevantDocuments(question);
   const context = relevantDocs.map((doc) => doc.pageContent).join("\n\n");
 
@@ -146,7 +264,7 @@ async function answerQuestion(question, userId) {
   return {
     answer,
     userId,
-    sourceUrl: session.activeSourceUrl,
+    document: serializeDocument(activeDocument, session.activeDocumentId),
     retrievedChunks: relevantDocs.length,
   };
 }
@@ -154,10 +272,9 @@ async function answerQuestion(question, userId) {
 app.get("/health", (req, res) => {
   const sessions = Array.from(userSessions.entries()).map(([userId, session]) => ({
     userId,
-    documentLoaded: Boolean(session.vectorStore),
-    sourceUrl: session.activeSourceUrl,
-    chunkCount: session.activeChunkCount,
-    loadedAt: session.loadedAt,
+    documentCount: session.documents.size,
+    activeDocumentId: session.activeDocumentId,
+    documents: listDocuments(userId),
   }));
 
   res.json({
@@ -166,6 +283,15 @@ app.get("/health", (req, res) => {
     sessions,
     chatModel: CHAT_MODEL,
     embeddingModel: EMBEDDING_MODEL,
+  });
+});
+
+app.get("/documents", (req, res) => {
+  const userId = getUserId(req.query.userId);
+
+  res.json({
+    userId,
+    documents: listDocuments(userId),
   });
 });
 
@@ -196,8 +322,31 @@ app.post("/load-document", async (req, res) => {
   }
 });
 
+app.post("/switch-document", (req, res) => {
+  const { userId: rawUserId, documentId } = req.body;
+  const userId = getUserId(rawUserId);
+
+  if (!documentId || typeof documentId !== "string") {
+    return res.status(400).json({
+      error: 'Request body must include a documentId, name, or list number, for example: { "documentId": "README.md" }',
+    });
+  }
+
+  try {
+    const result = switchActiveDocument(userId, documentId);
+    return res.json({
+      message: "Active document switched successfully.",
+      ...result,
+    });
+  } catch (error) {
+    return res.status(404).json({
+      error: error.message,
+    });
+  }
+});
+
 app.post("/ask", async (req, res) => {
-  const { question, userId: rawUserId } = req.body;
+  const { question, userId: rawUserId, documentId } = req.body;
   const userId = getUserId(rawUserId);
 
   if (!question || typeof question !== "string") {
@@ -208,7 +357,7 @@ app.post("/ask", async (req, res) => {
   }
 
   try {
-    const result = await answerQuestion(question, userId);
+    const result = await answerQuestion(question, userId, documentId);
     return res.json(result);
   } catch (error) {
     console.error("Failed to answer question:", error);
@@ -235,7 +384,7 @@ app.listen(PORT, async () => {
   try {
     console.log(`Loading default markdown document: ${DEFAULT_MARKDOWN_URL}`);
     const result = await buildVectorStoreFromMarkdown(DEFAULT_MARKDOWN_URL, DEFAULT_USER_ID);
-    console.log(`Loaded ${result.chunkCount} chunks from ${result.sourceUrl}`);
+    console.log(`Loaded ${result.document.chunkCount} chunks from ${result.document.sourceUrl}`);
   } catch (error) {
     console.error("Failed to load default markdown document:", error);
   }

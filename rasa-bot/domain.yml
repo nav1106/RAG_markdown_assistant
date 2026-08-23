@@ -22,6 +22,8 @@ intents:
 actions:
   - action_load_markdown
   - action_answer_from_markdown
+  - action_list_documents
+  - action_switch_document
 
 responses:
   utter_greet:
@@ -38,14 +40,13 @@ responses:
 
   utter_ask_markdown_url:
     - text: "Sure. Send me a raw markdown URL, usually a GitHub README.md link that starts with https://raw.githubusercontent.com/."
-  
+
   utter_help:
-    - text: "I can help you chat with markdown documents. To start, send a raw markdown URL, usually a README.md link from GitHub. For example: https://raw.githubusercontent.com/user/repo/main/README.md. After it loads, ask questions like 'summarize this document', 'how do I install it?', or 'what are the usage instructions?'"
+    - text: "I can help you chat with markdown documents. Send raw markdown URLs to load multiple documents, type 'list documents' to see them, and say 'switch to 1' or 'switch to README.md' to change the active document. Then ask questions like 'summarize this document' or 'how do I install it?'"
 
   utter_fallback:
-    - text: "I didn't understand that. You can send me a raw markdown URL to load a document, or ask a question about the document you've already loaded. Try typing 'help' for examples."
+    - text: "I didn't understand that. You can send me a raw markdown URL to load a document, list your documents, switch documents, or ask a question about the active document. Try typing 'help' for examples."
 
 session_config:
   session_expiration_time: 60
   carry_over_slots_to_new_session: true
-
