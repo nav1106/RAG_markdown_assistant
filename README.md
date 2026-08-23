@@ -1,262 +1,346 @@
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   # Markdown RAG Chatbot with Rasa, LangChain.js, and Ollama  This project is a visual chatbot that answers questions from a markdown document URL.  The user interacts through a simple HTML chat interface. Rasa manages the conversation flow, a Node.js RAG server handles markdown retrieval and question answering, and Ollama runs the local AI models.  ## Architecture  ```txt  chat.html    -> Rasa API server    -> Rasa action server    -> Node.js RAG server    -> Ollama    -> answer returns to chat.html   `
+# Markdown RAG Chatbot with Rasa, LangChain.js, and Ollama
 
-What Each Part Does
--------------------
+This project is a browser-based chatbot that lets a user load a raw markdown document URL and then ask questions about it. The frontend is a simple HTML chat UI, while the backend uses Rasa for conversation routing, a Node.js RAG service for retrieval, and Ollama for local embeddings and LLM inference.
 
-### chat.html
+## Overview
 
-This is the visual chatbot interface.
+The application works like this:
 
-The user can type:
+```text
+chat.html
+  -> Rasa API server
+  -> Rasa action server
+  -> Node.js RAG server
+  -> Ollama
+  -> answer returned to the chat UI
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   load this document https://raw.githubusercontent.com/user/repo/main/README.md   `
+## What each part does
 
-Then ask:
+### Frontend: `chat.html`
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   What are the prerequisites?  How do I install this?  What are the usage instructions?   `
+This file contains the visual chatbot interface. It lets the user:
+
+- load a markdown document by sending a raw markdown URL
+- ask questions about the currently loaded document
+- view answers in a chat-style interface
+
+Example input:
+
+```text
+load this document https://raw.githubusercontent.com/user/repo/main/README.md
+```
+
+Example follow-up questions:
+
+```text
+What are the prerequisites?
+How do I install this?
+What are the usage instructions?
+```
 
 ### Rasa
 
-Rasa decides what the user wants to do.
+Rasa decides which intent the user is expressing and triggers the correct action.
 
-For example:
+Examples:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   User gives markdown URL -> action_load_markdown  User asks a document question -> action_answer_from_markdown   `
+```text
+User gives markdown URL -> action_load_markdown
+User asks a doc question -> action_answer_from_markdown
+```
 
-Rasa does not generate the final answer. It routes the conversation.
+Rasa is responsible for routing the conversation; it does not generate the final answer itself.
 
-### Rasa Action Server
+### Rasa action server
 
-The action server runs custom Python actions.
+The custom Python action server handles the conversation logic and calls the Node.js RAG server.
 
-It calls the Node.js RAG server:
+Endpoints used:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   POST http://localhost:3000/load-document  POST http://localhost:3000/ask   `
+```text
+POST http://localhost:3000/load-document
+POST http://localhost:3000/ask
+```
 
-### Node.js RAG Server
+### Node.js RAG server
 
-The RAG server downloads markdown, chunks it, creates embeddings, retrieves relevant chunks, and asks the local LLM to answer.
+The Node.js service downloads the markdown content, splits it into chunks, creates embeddings, retrieves the most relevant chunks, and sends them to the local model for an answer.
 
 Endpoints:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   GET  /health  POST /load-document  POST /ask   `
+```text
+GET /health
+POST /load-document
+POST /ask
+```
 
 ### Ollama
 
-Ollama runs the local models.
+Ollama runs the local models used by the RAG pipeline.
 
 This project uses:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   nomic-embed-text  granite3.3:2b   `
+```text
+nomic-embed-text
+granite3.3:2b
+```
 
-Project Structure
------------------
+## Project structure
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   RAG_markdown_assistant/  │  ├── chat.html  │  ├── markdown-rag-tutorial-demo/  │   ├── index.js  │   ├── rag-server.js  │   ├── package.json  │   └── README.md  │  └── rasa-bot/      ├── actions/      │   └── actions.py      ├── data/      │   ├── nlu.yml      │   ├── rules.yml      │   └── stories.yml      ├── domain.yml      ├── endpoints.yml      ├── credentials.yml      └── models/   `
+```text
+RAG_markdown_assistant/
+├── chat.html
+├── README.md
+├── markdown-rag-tutorial-demo/
+│   ├── index.js
+│   ├── package.json
+│   ├── rag-server.js
+│   └── README.md
+└── rasa-bot/
+    ├── actions/
+    │   └── actions.py
+    ├── data/
+    │   ├── nlu.yml
+    │   ├── rules.yml
+    │   └── stories.yml
+    ├── config.yml
+    ├── credentials.yml
+    ├── domain.yml
+    ├── endpoints.yml
+    └── models/
+```
 
-Requirements
-------------
+## Requirements
 
-Install these before running the project:
+Before running the app, install:
 
-*   Node.js 18+
-    
-*   Python 3.10
-    
-*   Ollama
-    
-*   Rasa
-    
-*   Rasa SDK
-    
+- Node.js 18+
+- Python 3.10
+- Ollama
+- Rasa
+- Rasa SDK
 
-Important: use Python 3.10 for Rasa. Python 3.12 may cause dependency issues.
+> Important: use Python 3.10 for the Rasa environment. Python 3.12 may cause dependency issues.
 
-Setup Instructions
-------------------
+## Setup
 
-### 1\. Clone Or Copy The Project
+### 1. Clone or copy the project
 
-Place the project somewhere on your system, for example:
+Example location:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   C:\Users\YourName\VSCode Folder\RAG_markdown_assistant   `
+```bash
+C:\Users\YourName\VSCode Folder\RAG_markdown_assistant
+```
 
-### 2\. Install Ollama Models
+### 2. Install Ollama models
 
-Start Ollama or make sure it is already running.
+Start Ollama, then pull the required models:
 
-Then install the required models:
+```bash
+ollama pull granite3.3:2b
+ollama pull nomic-embed-text
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   ollama pull granite3.3:2b  ollama pull nomic-embed-text   `
+Check installed models:
 
-You can check installed models with:
+```bash
+ollama list
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   ollama list   `
+### 3. Install Node.js dependencies
 
-### 3\. Install Node.js Dependencies
+From the project root:
 
-Go to the Node RAG project folder:
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\markdown-rag-tutorial-demo"
+npm install
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\markdown-rag-tutorial-demo"  npm install   `
+If needed, install Express explicitly:
 
-Make sure Express is installed:
+```bash
+npm install express
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   npm install express   `
-
-### 4\. Set Up Rasa Environment
+### 4. Set up the Rasa environment
 
 Go to the Rasa folder:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"   `
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"
+```
 
 Create a Python 3.10 virtual environment:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   py -3.10 -m venv .venv   `
+```bash
+py -3.10 -m venv .venv
+```
 
 Activate it:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   .venv\Scripts\activate   `
+```powershell
+.venv\Scripts\activate
+```
 
 Install dependencies:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   python -m pip install --upgrade pip setuptools wheel  pip install rasa==3.6.21  pip install rasa-sdk requests   `
+```bash
+python -m pip install --upgrade pip setuptools wheel
+pip install rasa==3.6.21
+pip install rasa-sdk requests
+```
 
-### 5\. Train Rasa
+### 5. Train the Rasa model
 
-From inside the rasa-bot folder:
+From inside the `rasa-bot` folder:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   rasa train   `
+```bash
+rasa train
+```
 
 A trained model should appear in:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   rasa-bot/models/   `
+```text
+rasa-bot/models/
+```
 
-Running The Project
--------------------
+## Run the project
 
 You need three terminals plus the browser.
 
-### Terminal 1: Start The RAG Server
+### Terminal 1: start the RAG server
 
-Folder:
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\markdown-rag-tutorial-demo"
+node rag-server.js
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   markdown-rag-tutorial-demo   `
+The server runs at:
 
-Command:
+```text
+http://localhost:3000
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\markdown-rag-tutorial-demo"  node rag-server.js   `
+### Terminal 2: start the Rasa action server
 
-This starts the RAG server at:
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"
+.venv\Scripts\activate
+rasa run actions
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   http://localhost:3000   `
+The action server listens at:
 
-### Terminal 2: Start The Rasa Action Server
+```text
+http://localhost:5055
+```
 
-Folder:
+### Terminal 3: start the Rasa API server
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   rasa-bot   `
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"
+.venv\Scripts\activate
+rasa run --enable-api --cors "*"
+```
 
-Command:
+The API server runs at:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"  .venv\Scripts\activate  rasa run actions   `
+```text
+http://localhost:5005
+```
 
-This starts the action server at:
+### Browser: open the chatbot
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   http://localhost:5055   `
+Open:
 
-### Terminal 3: Start The Rasa API Server
+```text
+C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\chat.html
+```
 
-Folder:
+## How to use it
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   rasa-bot   `
+Type a raw markdown URL to load a document:
 
-Command:
+```text
+load this document https://raw.githubusercontent.com/expressjs/express/master/Readme.md
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"  .venv\Scripts\activate  rasa run --enable-api --cors "*"   `
+Wait for the bot to confirm the document loaded, then ask questions such as:
 
-This starts Rasa at:
+```text
+What are the basic usage instructions?
+How do I install it?
+What are the prerequisites?
+```
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   http://localhost:5005   `
+## Example flow
 
-### Browser: Open The Chatbot
+```text
+User: load this document https://raw.githubusercontent.com/expressjs/express/master/Readme.md
+Bot: Document loaded successfully. I found 15 chunks. You can ask questions now.
+User: What are the basic usage instructions?
+Bot: [Answer generated from the markdown document]
+```
 
-Open this file in your browser:
+## Important ports
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\chat.html   `
-
-How To Use The Chatbot
-----------------------
-
-First, load a markdown document by typing a raw markdown URL:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   load this document https://raw.githubusercontent.com/expressjs/express/master/Readme.md   `
-
-Wait for the bot to say:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   Document loaded successfully.   `
-
-Then ask questions:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   What are the basic usage instructions?  How do I install it?  What are the prerequisites?   `
-
-Example Flow
-------------
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   User:  load this document https://raw.githubusercontent.com/expressjs/express/master/Readme.md  Bot:  Document loaded successfully. I found 15 chunks. You can ask questions now.  User:  What are the basic usage instructions?  Bot:  [Answer generated from the markdown document]   `
-
-Important Ports
----------------
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   3000  -> Node.js RAG server  5005  -> Rasa API server  5055  -> Rasa action server  11434 -> Ollama   `
+```text
+3000  -> Node.js RAG server
+5005  -> Rasa API server
+5055  -> Rasa action server
+11434 -> Ollama
+```
 
 If a port is already in use, check it with:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   netstat -ano | findstr :5005   `
+```bash
+netstat -ano | findstr :5005
+```
 
-Then kill the process:
+Then stop the process:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   taskkill /PID YOUR_PID_HERE /F   `
+```bash
+taskkill /PID YOUR_PID_HERE /F
+```
 
-Use the correct port depending on the problem:
+## How it works internally
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   3000 for RAG server  5005 for Rasa API  5055 for Rasa actions  11434 for Ollama   `
+### Loading a document
 
-How It Works Internally
------------------------
-
-### Loading A Document
-
-When the user sends a markdown URL:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   load this document https://...   `
-
-Rasa detects the provide\_markdown\_url intent.
-
-Then Rasa runs:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   action_load_markdown   `
+When the user sends a markdown URL, Rasa detects the `provide_markdown_url` intent and triggers `action_load_markdown`.
 
 That action calls:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   POST http://localhost:3000/load-document   `
+```text
+POST http://localhost:3000/load-document
+```
 
-The RAG server downloads the markdown, splits it into chunks, creates embeddings, and stores them in memory.
+The RAG server downloads the markdown file, chunks it, creates embeddings, and stores the document in memory for the current user session.
 
-### Asking A Question
+### Asking a question
 
-When the user asks a question:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   What are the usage instructions?   `
-
-Rasa detects the ask\_documentation intent.
-
-Then Rasa runs:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   action_answer_from_markdown   `
+When the user asks a question, Rasa detects the `ask_documentation` intent and runs `action_answer_from_markdown`.
 
 That action calls:
 
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   POST http://localhost:3000/ask   `
+```text
+POST http://localhost:3000/ask
+```
+
+The Node.js RAG service retrieves the most relevant chunks and asks the LLM for an answer based only on that context.
+
+## Troubleshooting
+
+- If the chatbot says the document failed to load, confirm the RAG server is running on port 3000.
+- If the bot is unresponsive, confirm both the Rasa action server and API server are running.
+- If Ollama is not responding, make sure the model pull completed and `ollama serve` is active.
+- If a port is blocked, check the active process and terminate it before restarting the relevant service.
+
+## License
+
+This project is intended for local development and experimentation. See the included project files for exact license terms where applicable.
+
 
 The RAG server retrieves the most relevant markdown chunks and sends them to Ollama with the question.
 
