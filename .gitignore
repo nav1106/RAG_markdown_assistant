@@ -7,3 +7,5 @@ rasa-bot/.venv/
 venv/
 *.pyd
 *.dll
+rasa-bot/.rasa/
+rasa-bot/models/
