@@ -1,0 +1,37 @@
+﻿version: "3.1"
+
+rules:
+- rule: Answer documentation questions
+  steps:
+    - intent: ask_documentation
+    - action: action_answer_from_markdown
+
+- rule: Load markdown document
+  steps:
+    - intent: provide_markdown_url
+    - action: action_load_markdown
+
+- rule: Say goodbye anytime the user says goodbye
+  steps:
+  - intent: goodbye
+  - action: utter_goodbye
+
+- rule: Say 'I am a bot' anytime the user challenges
+  steps:
+  - intent: bot_challenge
+  - action: utter_iamabot
+
+- rule: Explain what the bot can do
+  steps:
+    - intent: ask_help
+    - action: utter_help
+
+- rule: Handle uncertain messages
+  steps:
+    - intent: nlu_fallback
+    - action: utter_fallback
+-
+ rule: Ask for markdown URL when user wants to load a document
+  steps:
+    - intent: request_load_document
+    - action: utter_ask_markdown_url

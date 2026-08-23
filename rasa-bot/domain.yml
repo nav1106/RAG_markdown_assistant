@@ -1,0 +1,51 @@
+﻿version: "3.1"
+
+intents:
+  - nlu_fallback
+  - request_load_document
+  - provide_markdown_url
+  - ask_documentation
+  - greet
+  - goodbye
+  - affirm
+  - deny
+  - mood_great
+  - mood_unhappy
+  - bot_challenge
+  - summarize_document
+  - switch_document
+  - list_documents
+  - compare_documents
+  - reset_document
+  - ask_help
+
+actions:
+  - action_load_markdown
+  - action_answer_from_markdown
+
+responses:
+  utter_greet:
+    - text: "Hey! Send me a raw markdown URL, then ask me questions about it."
+
+  utter_happy:
+    - text: "Great, carry on!"
+
+  utter_goodbye:
+    - text: "Bye"
+
+  utter_iamabot:
+    - text: "I am a Rasa-powered markdown assistant. I can load markdown documents and answer questions about them using a RAG backend."
+
+  utter_ask_markdown_url:
+    - text: "Sure. Send me a raw markdown URL, usually a GitHub README.md link that starts with https://raw.githubusercontent.com/."
+  
+  utter_help:
+    - text: "I can help you chat with markdown documents. To start, send a raw markdown URL, usually a README.md link from GitHub. For example: https://raw.githubusercontent.com/user/repo/main/README.md. After it loads, ask questions like 'summarize this document', 'how do I install it?', or 'what are the usage instructions?'"
+
+  utter_fallback:
+    - text: "I didn't understand that. You can send me a raw markdown URL to load a document, or ask a question about the document you've already loaded. Try typing 'help' for examples."
+
+session_config:
+  session_expiration_time: 60
+  carry_over_slots_to_new_session: true
+

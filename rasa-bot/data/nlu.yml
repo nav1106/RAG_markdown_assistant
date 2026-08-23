@@ -1,0 +1,221 @@
+﻿version: "3.1"
+
+nlu:
+- intent: request_load_document
+  examples: |
+    - I want to load a document
+    - I want to add a document
+    - help me load a markdown file
+    - load a document
+    - load a markdown file
+    - add a markdown document
+    - I have a README I want to use
+    - I want to ask questions about a README
+    - can I give you a document?
+    - can I give you a markdown file?
+    - I want to use a markdown URL
+    - I need to upload a document
+    - I want to start with a new document
+    - let me add a document first
+    - how do I load docs?
+    - read my documentation
+    - I want you to read a file
+    - let's load a README
+
+- intent: ask_documentation
+  examples: |
+    - how do I install this?
+    - what does this markdown say about setup?
+    - explain the usage section
+    - how do I configure it?
+    - what are the prerequisites?
+    - what are the basic usage instructions?
+    - how do I run this project?
+    - what does this project do?
+    - what commands do I need to run?
+    - what dependencies are required?
+    - tell me the installation steps
+    - explain the getting started section
+
+- intent: provide_markdown_url
+  examples: |
+    - load this document https://raw.githubusercontent.com/user/repo/main/README.md
+    - use this markdown https://raw.githubusercontent.com/user/repo/main/docs.md
+    - read this file https://example.com/README.md
+    - here is the markdown url https://raw.githubusercontent.com/user/repo/main/README.md
+    - https://raw.githubusercontent.com/user/repo/main/README.md
+    - https://raw.githubusercontent.com/nav1106/Malayalam-to-English-translator/refs/heads/main/README.md
+    - this is the url https://raw.githubusercontent.com/user/repo/main/README.md
+    - document url is https://raw.githubusercontent.com/user/repo/main/README.md
+    - can you read https://raw.githubusercontent.com/user/repo/main/README.md
+    - use https://raw.githubusercontent.com/user/repo/main/README.md
+    - open https://raw.githubusercontent.com/user/repo/main/README.md
+
+- intent: summarize_document
+  examples: |
+    - summarize this document
+    - give me a summary
+    - summarize the README
+    - what is this document about?
+    - give me the main points
+    - give me a quick overview
+    - what are the key takeaways?
+    - summarize the loaded document
+
+- intent: switch_document
+  examples: |
+    - switch to another document
+    - use the first document
+    - use the second document
+    - switch back to README
+    - change the active document
+    - select another document
+    - use my latest uploaded document
+
+- intent: list_documents
+  examples: |
+    - list my documents
+    - show loaded documents
+    - what documents have I loaded?
+    - which documents are available?
+    - what files can I ask about?
+    - what is loaded right now?
+    - which document am I using?
+
+- intent: compare_documents
+  examples: |
+    - compare these documents
+    - compare the two markdown files
+    - what is different between the documents?
+    - show differences between the files
+    - how are these documents different?
+    - compare both documents
+
+- intent: reset_document
+  examples: |
+    - reset the document
+    - clear the loaded document
+    - remove this document
+    - forget the current document
+    - start over
+    - clear everything
+    - unload the markdown file
+
+- intent: ask_help
+  examples: |
+    - help
+    - what can you do?
+    - what can u do
+    - how do I use this bot?
+    - show me instructions
+    - what should I type?
+    - what commands are supported?
+    - give me examples
+    - how can I load a document?
+    - how can I ask questions?
+    - how to send a markdown file
+    - how do I send a markdown file?
+    - how do I give you a markdown file?
+    - where do I paste the markdown URL?
+    - what is a raw markdown URL?
+    - what is a markdown file?
+    - what does markdown mean?
+    - explain markdown
+    - how do I get a README link?
+    - can I upload a markdown file?
+
+- intent: bot_challenge
+  examples: |
+    - are you a bot?
+    - are you a human?
+    - am I talking to a bot?
+    - am I talking to a human?
+    - who are you?
+    - what are you?
+    - what r u
+    - who r u
+    - what is this bot?
+    - tell me who you are
+    - are you an AI?
+
+- intent: greet
+  examples: |
+    - hey
+    - hello
+    - hi
+    - hello there
+    - good morning
+    - good evening
+    - moin
+    - hey there
+    - let's go
+    - hey dude
+    - goodmorning
+    - goodevening
+    - good afternoon
+
+- intent: goodbye
+  examples: |
+    - cu
+    - good by
+    - cee you later
+    - good night
+    - bye
+    - goodbye
+    - have a nice day
+    - see you around
+    - bye bye
+    - see you later
+
+- intent: affirm
+  examples: |
+    - yes
+    - y
+    - indeed
+    - of course
+    - that sounds good
+    - correct
+
+- intent: deny
+  examples: |
+    - no
+    - n
+    - never
+    - I don't think so
+    - don't like that
+    - no way
+    - not really
+
+- intent: mood_great
+  examples: |
+    - perfect
+    - great
+    - amazing
+    - feeling like a king
+    - wonderful
+    - I am feeling very good
+    - I am great
+    - I am amazing
+    - I am going to save the world
+    - super stoked
+    - extremely good
+    - so so perfect
+    - so good
+    - so perfect
+
+- intent: mood_unhappy
+  examples: |
+    - my day was horrible
+    - I am sad
+    - I don't feel very well
+    - I am disappointed
+    - super sad
+    - I'm so sad
+    - sad
+    - very sad
+    - unhappy
+    - not good
+    - not very good
+    - extremly sad
+    - so saad
+    - so sad

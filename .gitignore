@@ -1,0 +1,9 @@
+y_rasa_is_needed.txt
+updates.txt
+restart_and_close.txt
+port_info.txt
+.venv/
+rasa-bot/.venv/
+venv/
+*.pyd
+*.dll

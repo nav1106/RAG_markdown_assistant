@@ -1,0 +1,17 @@
+version: "3.1"
+
+stories:
+- story: greet and ask docs
+  steps:
+  - intent: greet
+  - action: utter_greet
+
+- story: documentation question
+  steps:
+  - intent: ask_documentation
+  - action: action_answer_from_markdown
+
+- story: load markdown document
+  steps:
+  - intent: provide_markdown_url
+  - action: action_load_markdown

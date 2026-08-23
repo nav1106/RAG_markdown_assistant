@@ -1,0 +1,812 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdown RAG Chatbot</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #07141f;
+        --bg-soft: #0c1c2a;
+        --panel: rgba(10, 24, 38, 0.8);
+        --panel-strong: rgba(12, 31, 48, 0.92);
+        --panel-border: rgba(168, 221, 255, 0.16);
+        --text: #edf8ff;
+        --muted: #a6c1d0;
+        --subtle: #7f9aa9;
+        --user-a: #8ecbff;
+        --user-b: #a7f0d0;
+        --bot-a: rgba(168, 221, 255, 0.16);
+        --bot-b: rgba(167, 240, 208, 0.14);
+        --accent: #9edcff;
+        --accent-strong: #9beac2;
+        --shadow: 0 30px 80px rgba(3, 9, 16, 0.45);
+        --input-bg: rgba(255, 255, 255, 0.06);
+        --input-border: rgba(168, 221, 255, 0.16);
+        --input-focus: rgba(167, 240, 208, 0.45);
+        --error-bg: rgba(255, 164, 164, 0.12);
+        --error-border: rgba(255, 172, 172, 0.28);
+        --error-text: #ffd3d3;
+      }
+
+      :root[data-theme="light"] {
+        color-scheme: light;
+        --bg: #edf9ff;
+        --bg-soft: #dff6f0;
+        --panel: rgba(255, 255, 255, 0.72);
+        --panel-strong: rgba(255, 255, 255, 0.9);
+        --panel-border: rgba(121, 173, 208, 0.18);
+        --text: #163041;
+        --muted: #577585;
+        --subtle: #6f8491;
+        --user-a: #6ab8ff;
+        --user-b: #78ddb4;
+        --bot-a: rgba(106, 184, 255, 0.14);
+        --bot-b: rgba(120, 221, 180, 0.14);
+        --accent: #4d9fe7;
+        --accent-strong: #3bbd8f;
+        --shadow: 0 24px 60px rgba(88, 130, 150, 0.22);
+        --input-bg: rgba(255, 255, 255, 0.84);
+        --input-border: rgba(83, 137, 176, 0.16);
+        --input-focus: rgba(59, 189, 143, 0.24);
+        --error-bg: rgba(255, 218, 218, 0.72);
+        --error-border: rgba(227, 135, 135, 0.32);
+        --error-text: #9f2e2e;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top left, rgba(140, 214, 255, 0.28), transparent 34%),
+          radial-gradient(circle at bottom right, rgba(141, 237, 192, 0.2), transparent 30%),
+          linear-gradient(160deg, var(--bg), var(--bg-soft));
+        color: var(--text);
+        font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+        transition:
+          background 220ms ease,
+          color 220ms ease;
+        overflow: hidden;
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        pointer-events: none;
+        border-radius: 999px;
+        filter: blur(12px);
+        opacity: 0.7;
+      }
+
+      body::before {
+        width: 260px;
+        height: 260px;
+        top: -70px;
+        right: -50px;
+        background: radial-gradient(circle, rgba(158, 220, 255, 0.32), transparent 70%);
+      }
+
+      body::after {
+        width: 320px;
+        height: 320px;
+        left: -100px;
+        bottom: -120px;
+        background: radial-gradient(circle, rgba(167, 240, 208, 0.28), transparent 70%);
+      }
+
+      .app {
+        position: relative;
+        width: min(1080px, calc(100vw - 28px));
+        height: 100vh;
+        margin: 0 auto;
+        padding: 14px;
+      }
+
+      .ambient {
+        position: absolute;
+        pointer-events: none;
+        border-radius: 999px;
+        filter: blur(10px);
+        opacity: 0.55;
+      }
+
+      .ambient.one {
+        width: 180px;
+        height: 180px;
+        top: 42px;
+        left: 20px;
+        background: radial-gradient(circle, rgba(158, 220, 255, 0.3), transparent 68%);
+      }
+
+      .ambient.two {
+        width: 220px;
+        height: 220px;
+        bottom: 86px;
+        right: 28px;
+        background: radial-gradient(circle, rgba(155, 234, 194, 0.24), transparent 68%);
+      }
+
+      .shell {
+        position: relative;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        height: 100%;
+        border: 1px solid var(--panel-border);
+        border-radius: 28px;
+        background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+        overflow: hidden;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 22px 24px 18px;
+        border-bottom: 1px solid var(--panel-border);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .brand-copy {
+        min-width: 0;
+      }
+
+      .eyebrow {
+        margin: 0 0 4px;
+        font-size: 12px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--accent-strong);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(22px, 3vw, 32px);
+        line-height: 1.05;
+        font-weight: 800;
+      }
+
+      .header-meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .status {
+        margin: 0;
+        padding: 9px 13px;
+        color: var(--muted);
+        font-size: 13px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--panel-border);
+      }
+
+      .theme-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border: 1px solid var(--panel-border);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition:
+          transform 160ms ease,
+          background 160ms ease,
+          border-color 160ms ease;
+      }
+
+      .theme-toggle:hover {
+        transform: translateY(-1px);
+        border-color: rgba(158, 220, 255, 0.36);
+      }
+
+      .theme-toggle-icon {
+        display: inline-grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, rgba(158, 220, 255, 0.24), rgba(155, 234, 194, 0.2));
+      }
+
+      .theme-toggle-icon svg {
+        display: block;
+        width: 17px;
+        height: 17px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .messages {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        padding: 18px 24px 24px;
+        overflow-y: auto;
+        scroll-behavior: smooth;
+      }
+
+      .message-row {
+        display: flex;
+        align-items: flex-end;
+        gap: 10px;
+      }
+
+      .message-row.user-row {
+        justify-content: flex-end;
+      }
+
+      .avatar {
+        flex: 0 0 auto;
+        width: 44px;
+        height: 44px;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        border: 1px solid var(--panel-border);
+        background: linear-gradient(145deg, rgba(158, 220, 255, 0.22), rgba(155, 234, 194, 0.18));
+        box-shadow: 0 10px 24px rgba(3, 9, 16, 0.16);
+      }
+
+      .avatar svg {
+        width: 36px;
+        height: 36px;
+        display: block;
+      }
+
+      .message {
+        width: fit-content;
+        max-width: min(720px, 86%);
+        padding: 14px 16px;
+        border-radius: 20px;
+        line-height: 1.55;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        border: 1px solid transparent;
+      }
+
+      .message strong {
+        font-weight: 800;
+      }
+
+      .user {
+        align-self: flex-end;
+        color: #07141f;
+        background: linear-gradient(135deg, var(--user-a), var(--user-b));
+        border-color: rgba(255, 255, 255, 0.28);
+        box-shadow: 0 18px 40px rgba(100, 172, 206, 0.2);
+      }
+
+      .bot {
+        align-self: flex-start;
+        color: var(--text);
+        background: linear-gradient(180deg, var(--bot-a), var(--bot-b));
+        border-color: var(--panel-border);
+      }
+
+      .error {
+        align-self: flex-start;
+        background: var(--error-bg);
+        color: var(--error-text);
+        border: 1px solid var(--error-border);
+      }
+
+      .typing-card {
+        min-width: 220px;
+      }
+
+      .typing-dots {
+        display: inline-flex;
+        gap: 6px;
+      }
+
+      .typing-dots span {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        animation: bounce 1s infinite ease-in-out;
+      }
+
+      .typing-dots span:nth-child(2) {
+        animation-delay: 120ms;
+      }
+
+      .typing-dots span:nth-child(3) {
+        animation-delay: 240ms;
+      }
+
+      .typing-radar {
+        height: 8px;
+        border-radius: 999px;
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.1)),
+          linear-gradient(90deg, rgba(158, 220, 255, 0.3), rgba(155, 234, 194, 0.28));
+        background-size: 200% 100%, 100% 100%;
+        animation: shimmer 1.45s linear infinite;
+      }
+
+      .composer {
+        padding: 0 24px 24px;
+        border-top: 1px solid var(--panel-border);
+      }
+
+      .composer-inner {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 12px;
+        padding-top: 18px;
+      }
+
+      input {
+        min-width: 0;
+        padding: 16px 18px;
+        border: 1px solid var(--input-border);
+        border-radius: 18px;
+        color: var(--text);
+        background: var(--input-bg);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        font: inherit;
+        transition:
+          border-color 160ms ease,
+          box-shadow 160ms ease,
+          background 160ms ease;
+      }
+
+      input::placeholder {
+        color: var(--subtle);
+      }
+
+      input:focus {
+        outline: none;
+        border-color: var(--input-focus);
+        box-shadow: 0 0 0 4px rgba(155, 234, 194, 0.1);
+      }
+
+      button {
+        min-width: 120px;
+        padding: 14px 18px;
+        border: 0;
+        border-radius: 18px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+        color: #07141f;
+        font: inherit;
+        font-weight: 800;
+        cursor: pointer;
+        box-shadow: 0 18px 30px rgba(67, 154, 188, 0.18);
+        transition:
+          transform 160ms ease,
+          filter 160ms ease,
+          opacity 160ms ease;
+      }
+
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        filter: brightness(1.03);
+      }
+
+      button:disabled,
+      input:disabled {
+        opacity: 0.62;
+        cursor: not-allowed;
+      }
+
+      @keyframes bounce {
+        0%,
+        80%,
+        100% {
+          transform: translateY(0);
+          opacity: 0.55;
+        }
+
+        40% {
+          transform: translateY(-5px);
+          opacity: 1;
+        }
+      }
+
+      @keyframes shimmer {
+        from {
+          background-position: 0% 0%, 0% 0%;
+        }
+
+        to {
+          background-position: 200% 0%, 100% 0%;
+        }
+      }
+
+      @media (max-width: 720px) {
+        body {
+          overflow: auto;
+        }
+
+        .app {
+          width: 100%;
+          height: auto;
+          min-height: 100vh;
+          padding: 10px;
+        }
+
+        .shell {
+          min-height: calc(100vh - 20px);
+        }
+
+        header {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .header-meta {
+          width: 100%;
+          justify-content: flex-start;
+        }
+
+        .messages,
+        .composer {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .composer-inner {
+          grid-template-columns: 1fr;
+        }
+
+        button {
+          width: 100%;
+        }
+
+        .message {
+          max-width: 92%;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="app">
+      <div class="ambient one"></div>
+      <div class="ambient two"></div>
+
+      <section class="shell">
+        <header>
+          <div class="brand">
+            <div class="avatar" aria-hidden="true">
+              <svg viewBox="0 0 64 64" role="img" aria-label="Cute robot">
+                <defs>
+                  <linearGradient id="robot-body-main" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#9edcff" />
+                    <stop offset="100%" stop-color="#9beac2" />
+                  </linearGradient>
+                </defs>
+                <rect x="14" y="17" width="36" height="28" rx="12" fill="url(#robot-body-main)" stroke="rgba(7,20,31,0.3)" />
+                <rect x="28" y="8" width="8" height="10" rx="4" fill="#eaf7ff" stroke="rgba(7,20,31,0.2)" />
+                <circle cx="32" cy="13" r="2.5" fill="#ffca5f" />
+                <circle cx="25" cy="29" r="4" fill="#07141f" />
+                <circle cx="39" cy="29" r="4" fill="#07141f" />
+                <circle cx="23.5" cy="27.5" r="1" fill="#edf8ff" />
+                <circle cx="37.5" cy="27.5" r="1" fill="#edf8ff" />
+                <path d="M25 36c2.5 2.2 11.5 2.2 14 0" fill="none" stroke="#07141f" stroke-linecap="round" stroke-width="2.5" />
+                <circle cx="20" cy="34" r="2" fill="#ffb8c8" opacity="0.8" />
+                <circle cx="44" cy="34" r="2" fill="#ffb8c8" opacity="0.8" />
+              </svg>
+            </div>
+            <div class="brand-copy">
+              <p class="eyebrow">Markdown RAG Assistant</p>
+              <h1>Talk to your document</h1>
+            </div>
+          </div>
+
+          <div class="header-meta">
+            <p class="status" id="status">Connected to Rasa at localhost:5005</p>
+            <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle theme">
+              <span class="theme-toggle-icon" id="theme-toggle-icon" aria-hidden="true"></span>
+              <span id="theme-toggle-label">Dark mode</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="messages" id="messages" aria-live="polite">
+          <div class="message-row bot-row">
+            <div class="avatar" aria-hidden="true">
+              <svg viewBox="0 0 64 64" role="img" aria-label="Cute robot">
+                <defs>
+                  <linearGradient id="robot-body-start" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#9edcff" />
+                    <stop offset="100%" stop-color="#9beac2" />
+                  </linearGradient>
+                </defs>
+                <rect x="14" y="17" width="36" height="28" rx="12" fill="url(#robot-body-start)" stroke="rgba(7,20,31,0.3)" />
+                <rect x="28" y="8" width="8" height="10" rx="4" fill="#eaf7ff" stroke="rgba(7,20,31,0.2)" />
+                <circle cx="32" cy="13" r="2.5" fill="#ffca5f" />
+                <circle cx="25" cy="29" r="4" fill="#07141f" />
+                <circle cx="39" cy="29" r="4" fill="#07141f" />
+                <circle cx="23.5" cy="27.5" r="1" fill="#edf8ff" />
+                <circle cx="37.5" cy="27.5" r="1" fill="#edf8ff" />
+                <path d="M25 36c2.5 2.2 11.5 2.2 14 0" fill="none" stroke="#07141f" stroke-linecap="round" stroke-width="2.5" />
+                <circle cx="20" cy="34" r="2" fill="#ffb8c8" opacity="0.8" />
+                <circle cx="44" cy="34" r="2" fill="#ffb8c8" opacity="0.8" />
+              </svg>
+            </div>
+            <div class="message bot">
+              Hey! Send me a raw markdown URL, then ask me questions about it.
+            </div>
+          </div>
+        </section>
+
+        <form id="chat-form" class="composer">
+          <div class="composer-inner">
+            <input
+              id="message-input"
+              type="text"
+              autocomplete="off"
+              placeholder="Ask about your markdown document..."
+              required
+            />
+            <button id="send-button" type="submit">Send</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <script>
+      const RASA_URL = "http://localhost:5005/webhooks/rest/webhook";
+      const SENDER_STORAGE_KEY = "rag-chat-sender-id";
+      const THEME_STORAGE_KEY = "rag-chat-theme";
+
+      const form = document.querySelector("#chat-form");
+      const input = document.querySelector("#message-input");
+      const messages = document.querySelector("#messages");
+      const statusText = document.querySelector("#status");
+      const sendButton = document.querySelector("#send-button");
+      const themeToggle = document.querySelector("#theme-toggle");
+      const themeToggleLabel = document.querySelector("#theme-toggle-label");
+      const themeToggleIcon = document.querySelector("#theme-toggle-icon");
+
+      let typingIndicator = null;
+
+      function getSenderId() {
+        let senderId = localStorage.getItem(SENDER_STORAGE_KEY);
+
+        if (!senderId) {
+          senderId = `browser-user-${crypto.randomUUID()}`;
+          localStorage.setItem(SENDER_STORAGE_KEY, senderId);
+        }
+
+        return senderId;
+      }
+
+      const SENDER_ID = getSenderId();
+      function escapeMarkdownText(text) {
+        return String(text)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;");
+      }
+
+      function renderMarkdownText(container, text) {
+        const escaped = escapeMarkdownText(text);
+        const parts = escaped.split(/(\*\*[^*]+\*\*)/g);
+
+        parts.forEach((part) => {
+          if (!part) return;
+
+          if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+            const strong = document.createElement("strong");
+            strong.textContent = part.slice(2, -2);
+            container.appendChild(strong);
+            return;
+          }
+
+          const lines = part.split(/\n/);
+          lines.forEach((line, index) => {
+            if (index > 0) {
+              container.appendChild(document.createElement("br"));
+            }
+
+            if (line) {
+              container.appendChild(document.createTextNode(line));
+            }
+          });
+        });
+      }
+
+      function createRobotAvatar() {
+        const gradientId = `robot-body-${Math.random().toString(36).slice(2, 10)}`;
+        const avatar = document.createElement("div");
+        avatar.className = "avatar";
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.innerHTML = `
+          <svg viewBox="0 0 64 64" role="img" aria-label="Cute robot">
+            <defs>
+              <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#9edcff" />
+                <stop offset="100%" stop-color="#9beac2" />
+              </linearGradient>
+            </defs>
+            <rect x="14" y="17" width="36" height="28" rx="12" fill="url(#${gradientId})" stroke="rgba(7,20,31,0.3)" />
+            <rect x="28" y="8" width="8" height="10" rx="4" fill="#eaf7ff" stroke="rgba(7,20,31,0.2)" />
+            <circle cx="32" cy="13" r="2.5" fill="#ffca5f" />
+            <circle cx="25" cy="29" r="4" fill="#07141f" />
+            <circle cx="39" cy="29" r="4" fill="#07141f" />
+            <circle cx="23.5" cy="27.5" r="1" fill="#edf8ff" />
+            <circle cx="37.5" cy="27.5" r="1" fill="#edf8ff" />
+            <path d="M25 36c2.5 2.2 11.5 2.2 14 0" fill="none" stroke="#07141f" stroke-linecap="round" stroke-width="2.5" />
+            <circle cx="20" cy="34" r="2" fill="#ffb8c8" opacity="0.8" />
+            <circle cx="44" cy="34" r="2" fill="#ffb8c8" opacity="0.8" />
+          </svg>
+        `;
+        return avatar;
+      }
+
+      function createTypingIndicator() {
+        const row = document.createElement("div");
+        row.className = "message-row bot-row typing-row";
+
+        row.appendChild(createRobotAvatar());
+
+        const bubble = document.createElement("div");
+        bubble.className = "message bot typing-card";
+        bubble.innerHTML = `
+          <span class="typing-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+        `;
+
+        row.appendChild(bubble);
+        return row;
+      }
+
+      function addMessage(text, type) {
+        const row = document.createElement("div");
+        row.className = `message-row ${type}-row`;
+
+        if (type !== "user") {
+          row.appendChild(createRobotAvatar());
+        }
+
+        const bubble = document.createElement("div");
+        bubble.className = `message ${type}`;
+        renderMarkdownText(bubble, text);
+        row.appendChild(bubble);
+
+        messages.appendChild(row);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      function setLoading(isLoading) {
+        sendButton.disabled = isLoading;
+        input.disabled = isLoading;
+        sendButton.textContent = isLoading ? "Sending..." : "Send";
+
+        if (isLoading && !typingIndicator) {
+          typingIndicator = createTypingIndicator();
+          messages.appendChild(typingIndicator);
+          messages.scrollTop = messages.scrollHeight;
+        }
+
+        if (!isLoading && typingIndicator) {
+          typingIndicator.remove();
+          typingIndicator = null;
+        }
+      }
+
+      function getThemeIconMarkup(isDark) {
+        if (isDark) {
+          return `
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 15.5A7.5 7.5 0 0 1 8.5 4a7.5 7.5 0 1 0 11.5 11.5Z" />
+            </svg>
+          `;
+        }
+
+        return `
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.25" />
+            <path d="M12 2.5v2.2M12 19.3v2.2M4.93 4.93l1.55 1.55M17.52 17.52l1.55 1.55M2.5 12h2.2M19.3 12h2.2M4.93 19.07l1.55-1.55M17.52 6.48l1.55-1.55" />
+          </svg>
+        `;
+      }
+
+      function applyTheme(theme) {
+        document.documentElement.dataset.theme = theme;
+        localStorage.setItem(THEME_STORAGE_KEY, theme);
+        const isDark = theme === "dark";
+        themeToggleLabel.textContent = isDark ? "Dark mode" : "Light mode";
+        themeToggleIcon.innerHTML = getThemeIconMarkup(isDark);
+      }
+
+      function initializeTheme() {
+        const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) || "dark";
+        applyTheme(savedTheme);
+      }
+
+      function toggleTheme() {
+        const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+        applyTheme(nextTheme);
+      }
+
+      async function sendMessage(message) {
+        const response = await fetch(RASA_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sender: SENDER_ID,
+            message,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Rasa returned ${response.status}`);
+        }
+
+        return response.json();
+      }
+
+      initializeTheme();
+      themeToggle.addEventListener("click", toggleTheme);
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const message = input.value.trim();
+        if (!message) return;
+
+        input.value = "";
+        addMessage(message, "user");
+        setLoading(true);
+
+        try {
+          const replies = await sendMessage(message);
+          const normalizedReplies = Array.isArray(replies) ? replies : [];
+
+          if (!normalizedReplies.length) {
+            addMessage("Rasa did not return a message.", "bot");
+          }
+
+          normalizedReplies.forEach((reply) => {
+            if (reply.text) {
+              addMessage(reply.text, "bot");
+            }
+          });
+
+          statusText.textContent = "Connected to Rasa at localhost:5005";
+        } catch (error) {
+          addMessage(
+            `Chat request failed: ${error.message}`,
+            "error"
+          );
+          statusText.textContent = error.message;
+        } finally {
+          setLoading(false);
+          input.focus();
+        }
+      });
+    </script>
+  </body>
+</html>
+
+
