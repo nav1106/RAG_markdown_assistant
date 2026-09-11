@@ -9,3 +9,4 @@ venv/
 *.dll
 rasa-bot/.rasa/
 rasa-bot/models/
+markdown-rag-tutorial-demo/.env
