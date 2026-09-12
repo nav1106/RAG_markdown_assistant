@@ -6,4 +6,4 @@ RUN pip install --no-cache-dir -r requirements-actions.txt
 COPY actions ./actions
 
 EXPOSE 5055
-CMD ["rasa", "run", "actions", "--host", "0.0.0.0", "--port", "5055", "--actions", "actions"]
+CMD ["sh", "-c", "python -m rasa_sdk --actions actions --host 0.0.0.0 --port ${PORT:-5055}"]

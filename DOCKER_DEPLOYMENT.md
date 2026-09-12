@@ -246,3 +246,21 @@ Groq and Jina are hosted APIs, so global users do not depend on your laptop.
 - Rasa API service can call the Rasa actions service.
 - Frontend has the deployed Rasa API URL.
 - RAG server has the deployed frontend URL for CORS.
+
+## 11. Render Troubleshooting Notes
+
+If the RAG server fails with `Invalid URL`, check that `QDRANT_URL` is the real Qdrant cluster URL and starts with `https://`.
+
+If the Rasa actions service exits immediately after a successful Docker build, make sure `rasa-bot/Dockerfile.actions` starts the action server with:
+
+```txt
+python -m rasa_sdk --actions actions --host 0.0.0.0 --port ${PORT:-5055}
+```
+
+If the Rasa API service fails because Render cannot detect a port, make sure `rasa-bot/Dockerfile` starts Rasa with:
+
+```txt
+rasa run --enable-api --cors '*' --host 0.0.0.0 --port ${PORT:-5005} --endpoints endpoints.cloud.yml
+```
+
+Render provides the `PORT` value in production, so these commands must read it instead of only using local ports.
