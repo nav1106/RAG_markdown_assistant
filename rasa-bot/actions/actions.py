@@ -1,10 +1,34 @@
+import os
+from pathlib import Path
 import re
 import requests
 from rasa_sdk import Action, Tracker
 from rasa_sdk.executor import CollectingDispatcher
 
-RAG_SERVER_URL = "http://localhost:3000"
 
+def load_env_file(file_path):
+    if not file_path.exists():
+        return
+
+    for line in file_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+
+        key, value = stripped.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+load_env_file(Path(__file__).resolve().parents[1] / ".env")
+RAG_SERVER_URL = os.getenv("RAG_SERVER_URL", "http://localhost:3000")
+RAG_SERVICE_TOKEN = os.getenv("RAG_SERVICE_TOKEN") or os.getenv("RASA_SERVICE_TOKEN")
+
+
+
+def rag_headers():
+    if not RAG_SERVICE_TOKEN:
+        return {}
+    return {"Authorization": f"Bearer {RAG_SERVICE_TOKEN}"}
 
 def get_user_id(tracker: Tracker):
     return tracker.sender_id or "anonymous-user"
@@ -50,6 +74,7 @@ def ask_rag(user_id, question, timeout=120):
         f"{RAG_SERVER_URL}/ask",
         json={"question": question, "userId": user_id},
         timeout=timeout,
+        headers=rag_headers(),
     )
     response.raise_for_status()
     return response.json()
@@ -88,6 +113,7 @@ class ActionLoadMarkdown(Action):
                 f"{RAG_SERVER_URL}/load-document",
                 json={"url": urls[0], "userId": user_id},
                 timeout=120,
+                headers=rag_headers(),
             )
             response.raise_for_status()
             data = response.json()
@@ -196,7 +222,7 @@ class ActionCompareDocuments(Action):
             payload["rightDocumentId"] = numbers[1]
 
         try:
-            response = requests.post(f"{RAG_SERVER_URL}/compare-documents", json=payload, timeout=120)
+            response = requests.post(f"{RAG_SERVER_URL}/compare-documents", json=payload, timeout=120, headers=rag_headers())
             response.raise_for_status()
             data = response.json()
             documents = data.get("documents", [])
@@ -219,6 +245,7 @@ class ActionResetDocuments(Action):
                 f"{RAG_SERVER_URL}/reset-active-document",
                 json={"userId": get_user_id(tracker)},
                 timeout=60,
+                headers=rag_headers(),
             )
             response.raise_for_status()
             dispatcher.utter_message(text="The active document has been removed. Type 'list documents' to see what is still loaded, or send a new raw markdown URL.")
@@ -237,6 +264,7 @@ class ActionListDocuments(Action):
                 f"{RAG_SERVER_URL}/documents",
                 params={"userId": get_user_id(tracker)},
                 timeout=30,
+                headers=rag_headers(),
             )
             response.raise_for_status()
             documents = response.json().get("documents", [])
@@ -265,6 +293,7 @@ class ActionSwitchDocument(Action):
                 f"{RAG_SERVER_URL}/switch-document",
                 json={"userId": user_id, "documentId": cleaned},
                 timeout=30,
+                headers=rag_headers(),
             )
             response.raise_for_status()
             active_document = response.json().get("activeDocument", {})
@@ -274,4 +303,6 @@ class ActionSwitchDocument(Action):
             dispatcher.utter_message(text="I could not find that document in your session. Type 'list documents' to see what is loaded.")
 
         return []
+
+
 

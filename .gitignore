@@ -1,12 +1,43 @@
-y_rasa_is_needed.txt
-updates.txt
-restart_and_close.txt
-port_info.txt
+# Local notes
+/y_rasa_is_needed.txt
+/updates.txt
+/restart_and_close.txt
+/port_info.txt
+
+# Python environments and caches
 .venv/
-rasa-bot/.venv/
 venv/
+rasa-bot/.venv/
+__pycache__/
+*.pyc
 *.pyd
 *.dll
+rasa-bot/actions/__pycache__/
+
+# Rasa generated files
 rasa-bot/.rasa/
 rasa-bot/models/
+
+# Node frontend generated files
+node_modules/
+dist/
+
+# Environment variables and local secrets
+.env
+*.env
+.env.*
+!.env.example
 markdown-rag-tutorial-demo/.env
+markdown-rag-tutorial-demo/.env.local
+markdown-rag-tutorial-demo/.env.production
+!markdown-rag-tutorial-demo/.env.example
+markdown-rag-tutorial-demo/auth-users.json
+
+# Logs and OS files
+*.log
+markdown-rag-tutorial-demo/*.log
+.DS_Store
+Thumbs.db
+rasa-bot/.env
+!rasa-bot/.env.example
+

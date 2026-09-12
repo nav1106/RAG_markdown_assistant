@@ -1,13 +1,13 @@
 # Markdown RAG Chatbot with Rasa, LangChain.js, and Ollama
 
-This project is a browser-based chatbot that lets a user load a raw markdown document URL and then ask questions about it. The frontend is a simple HTML chat UI, while the backend uses Rasa for conversation routing, a Node.js RAG service for retrieval, and Ollama for local embeddings and LLM inference.
+This project is a browser-based chatbot that lets a user load a raw markdown document URL or local markdown file and then ask questions about it. The frontend uses React and Vite, while the backend uses Rasa for conversation routing, a Node.js RAG service for retrieval, and Ollama for local embeddings and LLM inference.
 
 ## Overview
 
 The application works like this:
 
 ```text
-chat.html
+React + Vite frontend
   -> Rasa API server
   -> Rasa action server
   -> Node.js RAG server
@@ -17,13 +17,18 @@ chat.html
 
 ## What each part does
 
-### Frontend: `chat.html`
+### Frontend: React + Vite
 
-This file contains the visual chatbot interface. It lets the user:
+The interface lives in `src/main.jsx` and `src/styles.css`. It lets the user:
 
-- load a markdown document by sending a raw markdown URL
-- ask questions about the currently loaded document
-- view answers in a chat-style interface
+- load a markdown document from a raw URL or local `.md` file
+- view the current document and all loaded sources
+- switch documents, summarize, ask questions, and clear chat history
+- view source metadata, loading states, and error banners
+
+The app opens with a sign-up/login screen and supports email/password or Google sign-in. Passwords are hashed with Node's `scrypt`; account records are stored in the ignored `markdown-rag-tutorial-demo/auth-users.json` file, while active bearer-token sessions remain in memory. The browser stores only the current session token and theme preference in `localStorage`.
+
+To enable Google sign-in, copy `.env.example` to `.env`, create a Google OAuth web client, and set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, and `FRONTEND_URL`. Add the redirect URI (normally `http://localhost:3000/auth/google/callback`) to the Google Cloud OAuth client's authorized redirect URIs.
 
 Example input:
 
@@ -60,6 +65,7 @@ Endpoints used:
 
 ```text
 POST http://localhost:3000/load-document
+POST http://localhost:3000/load-markdown
 POST http://localhost:3000/ask
 ```
 
@@ -71,6 +77,12 @@ Endpoints:
 
 ```text
 GET /health
+POST /auth/signup
+POST /auth/login
+GET /auth/google
+GET /auth/google/callback
+GET /auth/me
+POST /auth/logout
 POST /load-document
 POST /ask
 ```
@@ -91,6 +103,11 @@ granite3.3:2b
 ```text
 RAG_markdown_assistant/
 ├── chat.html
+├── index.html
+├── package.json
+├── src/
+│   ├── main.jsx
+│   └── styles.css
 ├── README.md
 ├── markdown-rag-tutorial-demo/
 │   ├── index.js
@@ -150,7 +167,14 @@ ollama list
 
 ### 3. Install Node.js dependencies
 
-From the project root:
+Install the React frontend dependencies from the project root:
+
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant"
+npm install
+```
+
+Install the backend dependencies from the backend folder:
 
 ```bash
 cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\markdown-rag-tutorial-demo"
@@ -207,9 +231,18 @@ rasa-bot/models/
 
 ## Run the project
 
-You need three terminals plus the browser.
+You need four terminals plus the browser.
 
-### Terminal 1: start the RAG server
+### Terminal 1: start the React frontend
+
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant"
+npm run dev
+```
+
+The Vite app runs at the URL shown in the terminal, usually `http://localhost:5173`.
+
+### Terminal 2: start the RAG server
 
 ```bash
 cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\markdown-rag-tutorial-demo"
@@ -222,7 +255,7 @@ The server runs at:
 http://localhost:3000
 ```
 
-### Terminal 2: start the Rasa action server
+### Terminal 3: start the Rasa action server
 
 ```bash
 cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"
@@ -236,7 +269,7 @@ The action server listens at:
 http://localhost:5055
 ```
 
-### Terminal 3: start the Rasa API server
+### Terminal 4: start the Rasa API server
 
 ```bash
 cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"
@@ -252,11 +285,7 @@ http://localhost:5005
 
 ### Browser: open the chatbot
 
-Open:
-
-```text
-C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\chat.html
-```
+Open the Vite URL from Terminal 1. `chat.html` is retained as the legacy interface; the React app is the active frontend.
 
 ## How to use it
 

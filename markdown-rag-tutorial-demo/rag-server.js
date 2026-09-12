@@ -1,4 +1,4 @@
-﻿import crypto from "crypto";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -14,9 +14,6 @@ const __dirname = path.dirname(__filename);
 
 loadEnvFile(path.join(__dirname, ".env"));
 
-const app = express();
-app.use(express.json({ limit: "2mb" }));
-
 const PORT = getRequiredEnv("PORT");
 const OLLAMA_BASE_URL = getRequiredEnv("OLLAMA_BASE_URL");
 const EMBEDDING_MODEL = getRequiredEnv("EMBEDDING_MODEL");
@@ -27,8 +24,32 @@ const QDRANT_API_KEY = getRequiredEnv("QDRANT_API_KEY");
 const QDRANT_COLLECTION = getRequiredEnv("QDRANT_COLLECTION");
 const DEFAULT_MARKDOWN_URL = process.env.MARKDOWN_URL;
 const DEFAULT_USER_ID = "default-user";
+const AUTH_USERS_FILE = path.join(__dirname, process.env.AUTH_USERS_FILE || "auth-users.json");
+const REQUIRE_AUTH = process.env.REQUIRE_AUTH === "true";
+const RASA_SERVICE_TOKEN = process.env.RASA_SERVICE_TOKEN;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || `http://localhost:${PORT}/auth/google/callback`;
+const app = express();
+app.use(express.json({ limit: "2mb" }));
+app.use((req, res, next) => {
+  const allowedOrigins = new Set([FRONTEND_URL, "http://localhost:5173", "http://127.0.0.1:5173"]);
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.has(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
 
 const userSessions = new Map();
+const authUsers = new Map();
+const authTokens = new Map();
+const googleStates = new Map();
 
 const embeddings = new OllamaEmbeddings({
   model: EMBEDDING_MODEL,
@@ -115,6 +136,86 @@ function normalizeBaseUrl(value) {
 function getUserId(value) {
   return typeof value === "string" && value.trim() ? value.trim() : DEFAULT_USER_ID;
 }
+
+function normalizeEmail(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function createPasswordRecord(password) {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const passwordHash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return { salt, passwordHash };
+}
+
+function verifyPassword(password, record) {
+  const candidate = crypto.scryptSync(password, record.salt, 64);
+  const stored = Buffer.from(record.passwordHash, "hex");
+  return stored.length === candidate.length && crypto.timingSafeEqual(stored, candidate);
+}
+
+function saveAuthUsers() {
+  const users = Object.fromEntries([...authUsers.entries()].map(([email, user]) => [email, user]));
+  fs.writeFileSync(AUTH_USERS_FILE, JSON.stringify(users, null, 2), { encoding: "utf8", mode: 0o600 });
+}
+
+function loadAuthUsers() {
+  if (!fs.existsSync(AUTH_USERS_FILE)) return;
+  try {
+    const users = JSON.parse(fs.readFileSync(AUTH_USERS_FILE, "utf8"));
+    for (const [email, user] of Object.entries(users)) authUsers.set(email, user);
+  } catch (error) {
+    console.error("Could not read stored auth users:", error.message);
+  }
+}
+
+function createOrUpdateGoogleUser(profile) {
+  const email = normalizeEmail(profile.email);
+  const existing = authUsers.get(email);
+  const user = existing || { id: `user-${crypto.randomUUID()}`, email, provider: "google" };
+  user.name = profile.name || email.split("@")[0];
+  user.picture = profile.picture || user.picture;
+  authUsers.set(email, user);
+  saveAuthUsers();
+  return user;
+}
+
+function createAuthResponse(user) {
+  const token = crypto.randomBytes(32).toString("hex");
+  authTokens.set(token, user.id);
+  return { token, user: { id: user.id, name: user.name, email: user.email, picture: user.picture } };
+}
+
+function getAuthenticatedUser(req) {
+  const authorization = req.headers.authorization || "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  const userId = authTokens.get(token);
+  if (!userId) return null;
+  return [...authUsers.values()].find((user) => user.id === userId) || null;
+}
+
+function getServiceUserId(req, suppliedUserId) {
+  const authorization = req.headers.authorization || "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!RASA_SERVICE_TOKEN || token !== RASA_SERVICE_TOKEN) return null;
+  return getUserId(suppliedUserId);
+}
+function resolveUserId(req, suppliedUserId) {
+  const authenticatedUser = getAuthenticatedUser(req);
+  if (authenticatedUser) return authenticatedUser.id;
+  const serviceUserId = getServiceUserId(req, suppliedUserId);
+  if (serviceUserId) return serviceUserId;
+  if (REQUIRE_AUTH) {
+    const error = new Error("Please sign in again before using this document workspace.");
+    error.statusCode = 401;
+    throw error;
+  }
+  return getUserId(suppliedUserId);
+}
+
+function sendEndpointError(res, error, fallbackStatus = 500) {
+  return res.status(error.statusCode || fallbackStatus).json({ error: error.message });
+}
+loadAuthUsers();
 
 function getOrCreateSession(userId) {
   if (!userSessions.has(userId)) userSessions.set(userId, { activeDocumentId: null });
@@ -352,9 +453,12 @@ async function downloadMarkdown(url) {
 
 async function buildVectorStoreFromMarkdown(url, userId) {
   const markdown = await downloadMarkdown(url);
+  return buildVectorStoreFromMarkdownContent(markdown, url, userId);
+}
+
+async function buildVectorStoreFromMarkdownContent(markdown, url, userId, documentName = getDocumentName(url)) {
   const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 150, separators: ["\n\n", "\n", " ", ""] });
   const documentId = createDocumentId(url, userId);
-  const documentName = getDocumentName(url);
   const createdAt = new Date().toISOString();
   const docs = [new Document({ pageContent: markdown, metadata: { source: url, userId, documentId, documentName } })];
   const chunks = await splitter.splitDocuments(docs);
@@ -453,18 +557,80 @@ app.get("/health", async (req, res) => {
   res.json({ ok: true, qdrantCollection: QDRANT_COLLECTION, chatModel: CHAT_MODEL, embeddingModel: EMBEDDING_MODEL });
 });
 
+app.post("/auth/signup", (req, res) => {
+  const { name, email: rawEmail, password } = req.body;
+  const email = normalizeEmail(rawEmail);
+  if (!name?.trim() || !email || !password) return res.status(400).json({ error: "Name, email, and password are required." });
+  if (password.length < 8) return res.status(400).json({ error: "Use a password with at least 8 characters." });
+  if (!/^\S+@\S+\.\S+$/.test(email)) return res.status(400).json({ error: "Enter a valid email address." });
+  if (authUsers.has(email)) return res.status(409).json({ error: "An account with that email already exists." });
+
+  const user = { id: `user-${crypto.randomUUID()}`, name: name.trim(), email, ...createPasswordRecord(password) };
+  authUsers.set(email, user);
+  saveAuthUsers();
+  return res.status(201).json(createAuthResponse(user));
+});
+
+app.post("/auth/login", (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  const user = authUsers.get(email);
+  if (!user || !verifyPassword(req.body.password || "", user)) return res.status(401).json({ error: "The email or password is incorrect." });
+  return res.json(createAuthResponse(user));
+});
+
+app.get("/auth/google", (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) return res.status(503).send("Google sign-in is not configured. Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to the backend .env file.");
+  const state = crypto.randomBytes(24).toString("hex");
+  googleStates.set(state, Date.now());
+  const params = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: GOOGLE_REDIRECT_URI, response_type: "code", scope: "openid email profile", state, access_type: "offline", prompt: "select_account" });
+  return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+});
+
+app.get("/auth/google/callback", async (req, res) => {
+  const { code, state } = req.query;
+  const issuedAt = googleStates.get(state);
+  googleStates.delete(state);
+  if (!code || !issuedAt || Date.now() - issuedAt > 10 * 60 * 1000) return res.status(400).send("The Google sign-in request expired. Please try again.");
+
+  try {
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, redirect_uri: GOOGLE_REDIRECT_URI, grant_type: "authorization_code" }) });
+    const tokenData = await tokenResponse.json();
+    if (!tokenResponse.ok) throw new Error(tokenData.error_description || "Google token exchange failed.");
+    const profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
+    const profile = await profileResponse.json();
+    if (!profileResponse.ok || !profile.email) throw new Error("Google did not return an email address.");
+    const authResponse = createAuthResponse(createOrUpdateGoogleUser(profile));
+    const redirectParams = new URLSearchParams({ auth_token: authResponse.token, auth_user: JSON.stringify(authResponse.user) });
+    return res.redirect(`${FRONTEND_URL}/?${redirectParams}`);
+  } catch (error) {
+    return res.status(502).send(`Google sign-in failed: ${error.message}`);
+  }
+});
+
+app.get("/auth/me", (req, res) => {
+  const user = getAuthenticatedUser(req);
+  if (!user) return res.status(401).json({ error: "Your session has expired. Please sign in again." });
+  return res.json({ user: { id: user.id, name: user.name, email: user.email } });
+});
+
+app.post("/auth/logout", (req, res) => {
+  const authorization = req.headers.authorization || "";
+  if (authorization.startsWith("Bearer ")) authTokens.delete(authorization.slice(7));
+  return res.json({ ok: true });
+});
+
 app.get("/documents", async (req, res) => {
-  const userId = getUserId(req.query.userId);
+  const userId = resolveUserId(req, req.query.userId);
   try {
     res.json({ userId, documents: await listDocuments(userId) });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    sendEndpointError(res, error);
   }
 });
 
 app.post("/load-document", async (req, res) => {
   const { url, userId: rawUserId } = req.body;
-  const userId = getUserId(rawUserId);
+  const userId = resolveUserId(req, rawUserId);
   if (!url || typeof url !== "string") return res.status(400).json({ error: 'Request body must include a markdown URL, for example: { "url": "https://example.com/README.md" }' });
 
   try {
@@ -472,64 +638,81 @@ app.post("/load-document", async (req, res) => {
     return res.json({ message: "Markdown document loaded successfully.", ...result });
   } catch (error) {
     console.error("Failed to load markdown document:", error);
-    return res.status(500).json({ error: error.message });
+    return sendEndpointError(res, error);
+  }
+});
+
+app.post("/load-markdown", async (req, res) => {
+  const { markdown, name, sourceUrl, userId: rawUserId } = req.body;
+  const userId = resolveUserId(req, rawUserId);
+  if (!markdown || typeof markdown !== "string") return res.status(400).json({ error: "Request body must include markdown content." });
+
+  const documentName = typeof name === "string" && name.trim() ? name.trim() : "uploaded-document.md";
+  const documentUrl = typeof sourceUrl === "string" && sourceUrl.trim() ? sourceUrl.trim() : `upload://${documentName}`;
+
+  try {
+    const result = await buildVectorStoreFromMarkdownContent(markdown, documentUrl, userId, documentName);
+    return res.json({ message: "Uploaded markdown document loaded successfully.", ...result });
+  } catch (error) {
+    console.error("Failed to load uploaded markdown document:", error);
+    return sendEndpointError(res, error);
   }
 });
 
 app.post("/switch-document", async (req, res) => {
   const { userId: rawUserId, documentId } = req.body;
-  const userId = getUserId(rawUserId);
+  const userId = resolveUserId(req, rawUserId);
   if (!documentId || typeof documentId !== "string") return res.status(400).json({ error: 'Request body must include a documentId, name, or list number, for example: { "documentId": "README.md" }' });
 
   try {
     const result = await switchActiveDocument(userId, documentId);
     return res.json({ message: "Active document switched successfully.", ...result });
   } catch (error) {
-    return res.status(404).json({ error: error.message });
+    return sendEndpointError(res, error, 404);
   }
 });
 
 app.post("/reset-active-document", async (req, res) => {
   const { userId: rawUserId } = req.body;
-  const userId = getUserId(rawUserId);
+  const userId = resolveUserId(req, rawUserId);
 
   try {
     const result = await deleteActiveDocument(userId);
     return res.json({ message: "The active document was removed.", ...result });
   } catch (error) {
     console.error("Failed to reset active document:", error);
-    return res.status(500).json({ error: error.message });
+    return sendEndpointError(res, error);
   }
 });
 app.post("/reset-documents", async (req, res) => {
   const { userId: rawUserId } = req.body;
-  const userId = getUserId(rawUserId);
+  const userId = resolveUserId(req, rawUserId);
 
   try {
     await deleteUserDocuments(userId);
     return res.json({ message: "Your loaded documents were cleared.", userId, documents: [] });
   } catch (error) {
     console.error("Failed to reset documents:", error);
-    return res.status(500).json({ error: error.message });
+    return sendEndpointError(res, error);
   }
 });
 
 app.post("/compare-documents", async (req, res) => {
   const { userId: rawUserId, leftDocumentId, rightDocumentId, question } = req.body;
-  const userId = getUserId(rawUserId);
+  const userId = resolveUserId(req, rawUserId);
 
   try {
     const result = await compareDocuments(userId, leftDocumentId, rightDocumentId, question);
     return res.json(result);
   } catch (error) {
     console.error("Failed to compare documents:", error);
-    return res.status(500).json({ error: error.message });
+    return sendEndpointError(res, error);
   }
 });
 
 app.post("/ask", async (req, res) => {
   const { question, userId: rawUserId, documentId } = req.body;
-  const userId = getUserId(rawUserId);
+  const userId = resolveUserId(req, rawUserId);
   if (!question || typeof question !== "string") return res.status(400).json({ error: 'Request body must include a question, for example: { "question": "How do I install this?" }' });
 
   try {
@@ -537,10 +720,14 @@ app.post("/ask", async (req, res) => {
     return res.json(result);
   } catch (error) {
     console.error("Failed to answer question:", error);
-    return res.status(500).json({ error: error.message });
+    return sendEndpointError(res, error);
   }
 });
 
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  return sendEndpointError(res, error);
+});
 app.listen(PORT, async () => {
   await ensureQdrantCollection();
   console.log(`RAG server is running at http://localhost:${PORT}`);
@@ -560,5 +747,9 @@ app.listen(PORT, async () => {
     console.error("Failed to load default markdown document:", error);
   }
 });
+
+
+
+
 
 
