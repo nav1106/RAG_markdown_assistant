@@ -1,0 +1,19 @@
+FROM node:22-alpine AS build
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY index.html ./
+COPY src ./src
+
+ARG VITE_RASA_URL
+ARG VITE_RAG_AUTH_URL
+ENV VITE_RASA_URL=$VITE_RASA_URL
+ENV VITE_RAG_AUTH_URL=$VITE_RAG_AUTH_URL
+
+RUN npm run build
+
+FROM nginx:1.27-alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80

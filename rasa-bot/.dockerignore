@@ -1,0 +1,10 @@
+.venv
+.rasa
+models
+__pycache__
+actions/__pycache__
+*.pyc
+.env
+.env.*
+!.env.example
+.git

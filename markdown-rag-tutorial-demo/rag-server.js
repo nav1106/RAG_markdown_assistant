@@ -744,9 +744,9 @@ app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
   return sendEndpointError(res, error);
 });
-app.listen(PORT, async () => {
+app.listen(PORT, "0.0.0.0", async () => {
   await ensureQdrantCollection();
-  console.log(`RAG server is running at http://localhost:${PORT}`);
+  console.log(`RAG server is running on port ${PORT}`);
   console.log(`Using Groq chat model ${CHAT_MODEL}`);
   console.log(`Using Jina embedding model ${EMBEDDING_MODEL}`);
   console.log(`Using Qdrant collection ${QDRANT_COLLECTION}`);

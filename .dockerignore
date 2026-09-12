@@ -1,0 +1,14 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+chat.html
+updates.txt
+restart_and_close.txt
+port_info.txt
+y_rasa_is_needed.txt
+rasa-bot
+markdown-rag-tutorial-demo

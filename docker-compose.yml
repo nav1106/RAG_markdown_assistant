@@ -1,0 +1,52 @@
+services:
+  rag-server:
+    build:
+      context: ./markdown-rag-tutorial-demo
+    env_file:
+      - ./markdown-rag-tutorial-demo/.env
+    environment:
+      PORT: "3000"
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - "3000:3000"
+    volumes:
+      - rag-auth-data:/app/data
+
+  rasa-actions:
+    build:
+      context: ./rasa-bot
+      dockerfile: Dockerfile.actions
+    env_file:
+      - ./markdown-rag-tutorial-demo/.env
+    environment:
+      RAG_SERVER_URL: http://rag-server:3000
+    ports:
+      - "5055:5055"
+    depends_on:
+      - rag-server
+
+  rasa-api:
+    build:
+      context: ./rasa-bot
+      dockerfile: Dockerfile
+    command: run --enable-api --cors "*" --host 0.0.0.0 --port 5005 --endpoints endpoints.cloud.yml
+    environment:
+      ACTION_ENDPOINT_URL: http://rasa-actions:5055/webhook
+    ports:
+      - "5005:5005"
+    depends_on:
+      - rasa-actions
+
+  frontend:
+    build:
+      context: .
+      args:
+        VITE_RASA_URL: http://localhost:5005
+        VITE_RAG_AUTH_URL: http://localhost:3000
+    ports:
+      - "5173:80"
+    depends_on:
+      - rasa-api
+
+volumes:
+  rag-auth-data:
