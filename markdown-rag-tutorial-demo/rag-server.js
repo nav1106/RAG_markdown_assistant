@@ -1,4 +1,4 @@
-import crypto from "crypto";
+﻿import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -60,6 +60,25 @@ Guidelines:
   ["human", "{question}"],
 ]);
 
+const comparePromptTemplate = ChatPromptTemplate.fromMessages([
+  [
+    "system",
+    `You compare two markdown documents using only the provided context.
+
+Document A context:
+{leftContext}
+
+Document B context:
+{rightContext}
+
+Guidelines:
+- Compare purpose, setup, usage, features, and important differences.
+- Be clear when the provided context is not enough.
+- Keep the response practical and structured.`,
+  ],
+  ["human", "{question}"],
+]);
+
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
 
@@ -75,26 +94,17 @@ function loadEnvFile(filePath) {
     const key = trimmed.slice(0, separatorIndex).trim();
     let value = trimmed.slice(separatorIndex + 1).trim();
 
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
 
-    if (!process.env[key]) {
-      process.env[key] = value;
-    }
+    if (!process.env[key]) process.env[key] = value;
   }
 }
 
 function getRequiredEnv(name) {
   const value = process.env[name];
-
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-
+  if (!value) throw new Error(`Missing required environment variable: ${name}`);
   return value;
 }
 
@@ -107,17 +117,8 @@ function getUserId(value) {
 }
 
 function getOrCreateSession(userId) {
-  if (!userSessions.has(userId)) {
-    userSessions.set(userId, {
-      activeDocumentId: null,
-    });
-  }
-
+  if (!userSessions.has(userId)) userSessions.set(userId, { activeDocumentId: null });
   return userSessions.get(userId);
-}
-
-function getSession(userId) {
-  return userSessions.get(userId) || null;
 }
 
 function getDocumentName(url) {
@@ -135,31 +136,22 @@ function createDocumentId(url, userId) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "") || "document";
-  const hash = crypto
-    .createHash("sha1")
-    .update(`${userId}:${url}`)
-    .digest("hex")
-    .slice(0, 8);
-
+  const hash = crypto.createHash("sha1").update(`${userId}:${url}`).digest("hex").slice(0, 8);
   return `${name}-${hash}`;
 }
 
 function getChunkHeading(content) {
-  const heading = content
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line.startsWith("#"));
-
+  const heading = content.split("\n").map((line) => line.trim()).find((line) => line.startsWith("#"));
   return heading ? heading.replace(/^#+\s*/, "") : null;
 }
 
 function serializeDocument(document, activeDocumentId) {
   return {
     documentId: document.documentId,
-    name: document.documentName,
+    name: document.documentName || document.name,
     sourceUrl: document.sourceUrl,
     chunkCount: document.chunkCount,
-    loadedAt: document.createdAt,
+    loadedAt: document.createdAt || document.loadedAt,
     isActive: document.documentId === activeDocumentId,
   };
 }
@@ -185,12 +177,7 @@ async function qdrantRequest(pathname, options = {}) {
 
 async function ensureQdrantCollection() {
   const collectionPath = `/collections/${encodeURIComponent(QDRANT_COLLECTION)}`;
-
-  const response = await fetch(`${QDRANT_URL}${collectionPath}`, {
-    headers: {
-      "api-key": QDRANT_API_KEY,
-    },
-  });
+  const response = await fetch(`${QDRANT_URL}${collectionPath}`, { headers: { "api-key": QDRANT_API_KEY } });
 
   if (!response.ok) {
     if (response.status !== 404) {
@@ -200,12 +187,7 @@ async function ensureQdrantCollection() {
 
     await qdrantRequest(collectionPath, {
       method: "PUT",
-      body: JSON.stringify({
-        vectors: {
-          size: EMBEDDING_DIMENSION,
-          distance: "Cosine",
-        },
-      }),
+      body: JSON.stringify({ vectors: { size: EMBEDDING_DIMENSION, distance: "Cosine" } }),
     });
   }
 
@@ -217,43 +199,53 @@ async function ensurePayloadIndexes() {
 
   for (const fieldName of indexedFields) {
     try {
-      await qdrantRequest(
-        `/collections/${encodeURIComponent(QDRANT_COLLECTION)}/index?wait=true`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            field_name: fieldName,
-            field_schema: "keyword",
-          }),
-        }
-      );
+      await qdrantRequest(`/collections/${encodeURIComponent(QDRANT_COLLECTION)}/index?wait=true`, {
+        method: "PUT",
+        body: JSON.stringify({ field_name: fieldName, field_schema: "keyword" }),
+      });
     } catch (error) {
-      if (!String(error.message).includes("already exists")) {
-        throw error;
-      }
+      if (!String(error.message).includes("already exists")) throw error;
     }
   }
 }
 
 function createFilter(conditions) {
-  return {
-    must: conditions.map(([key, value]) => ({
-      key,
-      match: { value },
-    })),
-  };
+  return { must: conditions.map(([key, value]) => ({ key, match: { value } })) };
 }
 
 async function deleteExistingDocumentChunks(userId, documentId) {
   await qdrantRequest(`/collections/${encodeURIComponent(QDRANT_COLLECTION)}/points/delete?wait=true`, {
     method: "POST",
-    body: JSON.stringify({
-      filter: createFilter([
-        ["userId", userId],
-        ["documentId", documentId],
-      ]),
-    }),
+    body: JSON.stringify({ filter: createFilter([["userId", userId], ["documentId", documentId]]) }),
   });
+}
+
+async function deleteUserDocuments(userId) {
+  await qdrantRequest(`/collections/${encodeURIComponent(QDRANT_COLLECTION)}/points/delete?wait=true`, {
+    method: "POST",
+    body: JSON.stringify({ filter: createFilter([["userId", userId]]) }),
+  });
+  userSessions.set(userId, { activeDocumentId: null });
+}
+
+async function deleteActiveDocument(userId) {
+  const session = getOrCreateSession(userId);
+  const documents = await listDocuments(userId);
+  const activeDocument = await findDocument(userId, session.activeDocumentId) || documents.at(-1);
+
+  if (!activeDocument) throw new Error("No active document is loaded for this user.");
+
+  await deleteExistingDocumentChunks(userId, activeDocument.documentId);
+
+  session.activeDocumentId = null;
+  const remainingDocuments = await listDocuments(userId);
+
+  return {
+    userId,
+    removedDocument: activeDocument,
+    activeDocument: remainingDocuments.find((document) => document.isActive) || null,
+    documents: remainingDocuments,
+  };
 }
 
 async function upsertChunks(chunks, vectors, metadata) {
@@ -283,13 +275,7 @@ async function scrollUserPoints(userId) {
   let offset = null;
 
   do {
-    const body = {
-      filter: createFilter([["userId", userId]]),
-      limit: 100,
-      with_payload: true,
-      with_vector: false,
-    };
-
+    const body = { filter: createFilter([["userId", userId]]), limit: 100, with_payload: true, with_vector: false };
     if (offset) body.offset = offset;
 
     const data = await qdrantRequest(`/collections/${encodeURIComponent(QDRANT_COLLECTION)}/points/scroll`, {
@@ -315,7 +301,6 @@ async function listDocuments(userId) {
     if (!documentId) continue;
 
     const existing = documentsById.get(documentId);
-
     if (!existing) {
       documentsById.set(documentId, {
         documentId,
@@ -324,20 +309,13 @@ async function listDocuments(userId) {
         chunkCount: 1,
         createdAt: payload.createdAt,
       });
-      continue;
+    } else {
+      existing.chunkCount += 1;
     }
-
-    existing.chunkCount += 1;
   }
 
-  const documents = Array.from(documentsById.values()).sort((a, b) =>
-    String(a.createdAt).localeCompare(String(b.createdAt))
-  );
-
-  if (!session.activeDocumentId && documents.length) {
-    session.activeDocumentId = documents.at(-1).documentId;
-  }
-
+  const documents = Array.from(documentsById.values()).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+  if (!session.activeDocumentId && documents.length) session.activeDocumentId = documents.at(-1).documentId;
   return documents.map((document) => serializeDocument(document, session.activeDocumentId));
 }
 
@@ -348,9 +326,7 @@ async function findDocument(userId, identifier) {
   const normalizedIdentifier = String(identifier).trim().toLowerCase();
   if (!normalizedIdentifier) return null;
 
-  if (/^\d+$/.test(normalizedIdentifier)) {
-    return documents[Number(normalizedIdentifier) - 1] || null;
-  }
+  if (/^\d+$/.test(normalizedIdentifier)) return documents[Number(normalizedIdentifier) - 1] || null;
 
   return documents.find((document) => {
     const name = document.name.toLowerCase();
@@ -362,169 +338,125 @@ async function findDocument(userId, identifier) {
 async function switchActiveDocument(userId, identifier) {
   const session = getOrCreateSession(userId);
   const document = await findDocument(userId, identifier);
-
-  if (!document) {
-    throw new Error("I could not find that document for this user.");
-  }
+  if (!document) throw new Error("I could not find that document for this user.");
 
   session.activeDocumentId = document.documentId;
-
-  return {
-    userId,
-    activeDocument: document,
-    documents: await listDocuments(userId),
-  };
+  return { userId, activeDocument: document, documents: await listDocuments(userId) };
 }
 
 async function downloadMarkdown(url) {
   const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to download markdown: ${response.status} ${response.statusText}`
-    );
-  }
-
+  if (!response.ok) throw new Error(`Failed to download markdown: ${response.status} ${response.statusText}`);
   return response.text();
 }
 
 async function buildVectorStoreFromMarkdown(url, userId) {
   const markdown = await downloadMarkdown(url);
-
-  const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 1000,
-    chunkOverlap: 200,
-    separators: ["\n\n", "\n", " ", ""],
-  });
-
+  const splitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 150, separators: ["\n\n", "\n", " ", ""] });
   const documentId = createDocumentId(url, userId);
   const documentName = getDocumentName(url);
   const createdAt = new Date().toISOString();
-
-  const docs = [
-    new Document({
-      pageContent: markdown,
-      metadata: { source: url, userId, documentId, documentName },
-    }),
-  ];
-
+  const docs = [new Document({ pageContent: markdown, metadata: { source: url, userId, documentId, documentName } })];
   const chunks = await splitter.splitDocuments(docs);
   const vectors = await embeddings.embedDocuments(chunks.map((chunk) => chunk.pageContent));
 
   await deleteExistingDocumentChunks(userId, documentId);
-  await upsertChunks(chunks, vectors, {
-    userId,
-    documentId,
-    documentName,
-    sourceUrl: url,
-    createdAt,
-  });
+  await upsertChunks(chunks, vectors, { userId, documentId, documentName, sourceUrl: url, createdAt });
 
   const session = getOrCreateSession(userId);
   session.activeDocumentId = documentId;
 
   return {
     userId,
-    document: {
-      documentId,
-      name: documentName,
-      sourceUrl: url,
-      chunkCount: chunks.length,
-      loadedAt: createdAt,
-      isActive: true,
-    },
+    document: { documentId, name: documentName, sourceUrl: url, chunkCount: chunks.length, loadedAt: createdAt, isActive: true },
     documents: await listDocuments(userId),
   };
 }
 
 function normalizeModelResponse(response) {
-  if (typeof response.content === "string") {
-    return response.content;
-  }
-
+  if (typeof response.content === "string") return response.content;
   if (Array.isArray(response.content)) {
-    return response.content
-      .map((part) => {
-        if (typeof part === "string") return part;
-        if (part && typeof part.text === "string") return part.text;
-        return "";
-      })
-      .join("")
-      .trim();
+    return response.content.map((part) => {
+      if (typeof part === "string") return part;
+      if (part && typeof part.text === "string") return part.text;
+      return "";
+    }).join("").trim();
   }
-
   return String(response.content ?? "");
 }
 
-async function answerQuestion(question, userId, documentId) {
-  const session = getOrCreateSession(userId);
-  const targetDocument = documentId
-    ? await findDocument(userId, documentId)
-    : await findDocument(userId, session.activeDocumentId) || (await listDocuments(userId)).at(-1);
-
-  if (!targetDocument) {
-    throw new Error(
-      "No markdown document is loaded for this user yet. Call POST /load-document first."
-    );
-  }
-
-  session.activeDocumentId = targetDocument.documentId;
-
-  const questionVector = await embeddings.embedQuery(question);
+async function searchDocumentContext(userId, documentId, query, limit = 5) {
+  const questionVector = await embeddings.embedQuery(query);
   const data = await qdrantRequest(`/collections/${encodeURIComponent(QDRANT_COLLECTION)}/points/search`, {
     method: "POST",
     body: JSON.stringify({
       vector: questionVector,
-      filter: createFilter([
-        ["userId", userId],
-        ["documentId", targetDocument.documentId],
-      ]),
-      limit: 5,
+      filter: createFilter([["userId", userId], ["documentId", documentId]]),
+      limit,
       with_payload: true,
       with_vector: false,
     }),
   });
 
-  const relevantDocs = data.result || [];
+  return data.result || [];
+}
+
+async function answerQuestion(question, userId, documentId) {
+  const session = getOrCreateSession(userId);
+  const documents = await listDocuments(userId);
+  const targetDocument = documentId
+    ? await findDocument(userId, documentId)
+    : await findDocument(userId, session.activeDocumentId) || documents.at(-1);
+
+  if (!targetDocument) throw new Error("No markdown document is loaded for this user yet. Call POST /load-document first.");
+
+  session.activeDocumentId = targetDocument.documentId;
+  const relevantDocs = await searchDocumentContext(userId, targetDocument.documentId, question, 5);
   const context = relevantDocs.map((point) => point.payload?.content).filter(Boolean).join("\n\n");
-
-  const promptMessages = await promptTemplate.formatMessages({
-    context,
-    question,
-  });
-
+  const promptMessages = await promptTemplate.formatMessages({ context, question });
   const response = await llm.invoke(promptMessages);
-  const answer = normalizeModelResponse(response);
 
   return {
-    answer,
+    answer: normalizeModelResponse(response),
     userId,
     document: targetDocument,
     retrievedChunks: relevantDocs.length,
   };
 }
 
+async function compareDocuments(userId, leftIdentifier, rightIdentifier, question) {
+  const documents = await listDocuments(userId);
+  if (documents.length < 2) throw new Error("Load at least two documents before comparing them.");
+
+  const leftDocument = leftIdentifier ? await findDocument(userId, leftIdentifier) : documents[0];
+  const rightDocument = rightIdentifier ? await findDocument(userId, rightIdentifier) : documents[1];
+  if (!leftDocument || !rightDocument) throw new Error("I could not find the documents to compare.");
+  if (leftDocument.documentId === rightDocument.documentId) throw new Error("Choose two different documents to compare.");
+
+  const compareQuestion = question || "Compare these two documents by purpose, setup, usage, features, and important differences.";
+  const leftDocs = await searchDocumentContext(userId, leftDocument.documentId, compareQuestion, 6);
+  const rightDocs = await searchDocumentContext(userId, rightDocument.documentId, compareQuestion, 6);
+  const leftContext = leftDocs.map((point) => point.payload?.content).filter(Boolean).join("\n\n");
+  const rightContext = rightDocs.map((point) => point.payload?.content).filter(Boolean).join("\n\n");
+  const promptMessages = await comparePromptTemplate.formatMessages({ leftContext, rightContext, question: compareQuestion });
+  const response = await llm.invoke(promptMessages);
+
+  return {
+    answer: normalizeModelResponse(response),
+    userId,
+    documents: [leftDocument, rightDocument],
+    retrievedChunks: leftDocs.length + rightDocs.length,
+  };
+}
+
 app.get("/health", async (req, res) => {
-  try {
-    res.json({
-      ok: true,
-      qdrantCollection: QDRANT_COLLECTION,
-      chatModel: CHAT_MODEL,
-      embeddingModel: EMBEDDING_MODEL,
-    });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
-  }
+  res.json({ ok: true, qdrantCollection: QDRANT_COLLECTION, chatModel: CHAT_MODEL, embeddingModel: EMBEDDING_MODEL });
 });
 
 app.get("/documents", async (req, res) => {
   const userId = getUserId(req.query.userId);
-
   try {
-    res.json({
-      userId,
-      documents: await listDocuments(userId),
-    });
+    res.json({ userId, documents: await listDocuments(userId) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -533,96 +465,100 @@ app.get("/documents", async (req, res) => {
 app.post("/load-document", async (req, res) => {
   const { url, userId: rawUserId } = req.body;
   const userId = getUserId(rawUserId);
-
-  if (!url || typeof url !== "string") {
-    return res.status(400).json({
-      error:
-        'Request body must include a markdown URL, for example: { "url": "https://example.com/README.md" }',
-    });
-  }
+  if (!url || typeof url !== "string") return res.status(400).json({ error: 'Request body must include a markdown URL, for example: { "url": "https://example.com/README.md" }' });
 
   try {
     const result = await buildVectorStoreFromMarkdown(url, userId);
-
-    return res.json({
-      message: "Markdown document loaded successfully.",
-      ...result,
-    });
+    return res.json({ message: "Markdown document loaded successfully.", ...result });
   } catch (error) {
     console.error("Failed to load markdown document:", error);
-
-    return res.status(500).json({
-      error: error.message,
-    });
+    return res.status(500).json({ error: error.message });
   }
 });
 
 app.post("/switch-document", async (req, res) => {
   const { userId: rawUserId, documentId } = req.body;
   const userId = getUserId(rawUserId);
-
-  if (!documentId || typeof documentId !== "string") {
-    return res.status(400).json({
-      error: 'Request body must include a documentId, name, or list number, for example: { "documentId": "README.md" }',
-    });
-  }
+  if (!documentId || typeof documentId !== "string") return res.status(400).json({ error: 'Request body must include a documentId, name, or list number, for example: { "documentId": "README.md" }' });
 
   try {
     const result = await switchActiveDocument(userId, documentId);
-    return res.json({
-      message: "Active document switched successfully.",
-      ...result,
-    });
+    return res.json({ message: "Active document switched successfully.", ...result });
   } catch (error) {
-    return res.status(404).json({
-      error: error.message,
-    });
+    return res.status(404).json({ error: error.message });
+  }
+});
+
+app.post("/reset-active-document", async (req, res) => {
+  const { userId: rawUserId } = req.body;
+  const userId = getUserId(rawUserId);
+
+  try {
+    const result = await deleteActiveDocument(userId);
+    return res.json({ message: "The active document was removed.", ...result });
+  } catch (error) {
+    console.error("Failed to reset active document:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+app.post("/reset-documents", async (req, res) => {
+  const { userId: rawUserId } = req.body;
+  const userId = getUserId(rawUserId);
+
+  try {
+    await deleteUserDocuments(userId);
+    return res.json({ message: "Your loaded documents were cleared.", userId, documents: [] });
+  } catch (error) {
+    console.error("Failed to reset documents:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/compare-documents", async (req, res) => {
+  const { userId: rawUserId, leftDocumentId, rightDocumentId, question } = req.body;
+  const userId = getUserId(rawUserId);
+
+  try {
+    const result = await compareDocuments(userId, leftDocumentId, rightDocumentId, question);
+    return res.json(result);
+  } catch (error) {
+    console.error("Failed to compare documents:", error);
+    return res.status(500).json({ error: error.message });
   }
 });
 
 app.post("/ask", async (req, res) => {
   const { question, userId: rawUserId, documentId } = req.body;
   const userId = getUserId(rawUserId);
-
-  if (!question || typeof question !== "string") {
-    return res.status(400).json({
-      error:
-        'Request body must include a question, for example: { "question": "How do I install this?" }',
-    });
-  }
+  if (!question || typeof question !== "string") return res.status(400).json({ error: 'Request body must include a question, for example: { "question": "How do I install this?" }' });
 
   try {
     const result = await answerQuestion(question, userId, documentId);
     return res.json(result);
   } catch (error) {
     console.error("Failed to answer question:", error);
-
-    return res.status(500).json({
-      error: error.message,
-    });
+    return res.status(500).json({ error: error.message });
   }
 });
 
 app.listen(PORT, async () => {
   await ensureQdrantCollection();
-
   console.log(`RAG server is running at http://localhost:${PORT}`);
   console.log(`Using Ollama at ${OLLAMA_BASE_URL}`);
   console.log(`Using Qdrant collection ${QDRANT_COLLECTION}`);
 
   if (!DEFAULT_MARKDOWN_URL) {
-    console.log(
-      "No default markdown URL set. Call POST /load-document before asking questions."
-    );
+    console.log("No default markdown URL set. Call POST /load-document before asking questions.");
     return;
   }
 
   try {
-    console.log(`Loading default markdown document from MARKDOWN_URL`);
+    console.log("Loading default markdown document from MARKDOWN_URL");
     const result = await buildVectorStoreFromMarkdown(DEFAULT_MARKDOWN_URL, DEFAULT_USER_ID);
     console.log(`Loaded ${result.document.chunkCount} chunks from ${result.document.sourceUrl}`);
   } catch (error) {
     console.error("Failed to load default markdown document:", error);
   }
 });
+
 

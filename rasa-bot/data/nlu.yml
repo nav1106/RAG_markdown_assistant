@@ -1,4 +1,4 @@
-﻿version: "3.1"
+version: "3.1"
 
 nlu:
 - intent: request_load_document
@@ -32,7 +32,6 @@ nlu:
     - what are the basic usage instructions?
     - how do I run this project?
     - what does this project do?
-    - what commands do I need to run?
     - what dependencies are required?
     - tell me the installation steps
     - explain the getting started section
@@ -104,6 +103,10 @@ nlu:
     - show differences between the files
     - how are these documents different?
     - compare both documents
+    - compare document 1 and document 2
+    - compare first and second document
+    - compare 1 and 2
+    - compare README.md and API.md
 
 - intent: reset_document
   examples: |
@@ -114,6 +117,56 @@ nlu:
     - start over
     - clear everything
     - unload the markdown file
+    - remove the active document
+    - delete the current document
+    - reset current document
+    - clear this document
+
+
+- intent: explain_setup
+  examples: |
+    - explain setup steps
+    - show setup steps
+    - how do I set this up?
+    - give me the setup guide
+    - walk me through the setup
+    - explain getting started
+    - how do I start this project?
+    - what are the setup instructions?
+    - tell me how to configure this
+    - show me the installation and setup steps
+    - what should I do first to run this?
+    - explain the project setup in order
+
+- intent: extract_commands
+  examples: |
+    - show me the commands
+    - extract commands
+    - what command lines are in this document?
+    - list setup commands
+    - show installation commands
+    - give me the terminal commands
+    - what npm commands are mentioned?
+    - what python commands are mentioned?
+    - show all code commands
+    - extract run commands from the document
+    - list deployment commands
+    - show me command line steps
+
+- intent: show_troubleshooting
+  examples: |
+    - show troubleshooting steps
+    - how do I troubleshoot this?
+    - what can go wrong?
+    - show common errors
+    - why is installation failing?
+    - what errors should I watch for?
+    - give me troubleshooting help
+    - debug setup issues
+    - what are common problems?
+    - help me fix errors from this document
+    - show warnings and failure points
+    - what should I check if it does not work?
 
 - intent: ask_help
   examples: |

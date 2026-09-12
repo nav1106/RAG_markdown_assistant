@@ -1,4 +1,4 @@
-﻿version: "3.1"
+version: "3.1"
 
 intents:
   - nlu_fallback
@@ -16,6 +16,9 @@ intents:
   - switch_document
   - list_documents
   - compare_documents
+  - show_troubleshooting
+  - explain_setup
+  - extract_commands
   - reset_document
   - ask_help
 
@@ -24,6 +27,12 @@ actions:
   - action_answer_from_markdown
   - action_list_documents
   - action_switch_document
+  - action_summarize_document
+  - action_extract_commands
+  - action_show_troubleshooting
+  - action_explain_setup
+  - action_compare_documents
+  - action_reset_documents
 
 responses:
   utter_greet:
@@ -50,3 +59,4 @@ responses:
 session_config:
   session_expiration_time: 60
   carry_over_slots_to_new_session: true
+

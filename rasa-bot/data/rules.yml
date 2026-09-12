@@ -1,4 +1,4 @@
-﻿version: "3.1"
+version: "3.1"
 
 rules:
 - rule: Answer documentation questions
@@ -10,6 +10,36 @@ rules:
   steps:
     - intent: provide_markdown_url
     - action: action_load_markdown
+
+- rule: Summarize active document
+  steps:
+    - intent: summarize_document
+    - action: action_summarize_document
+
+- rule: Explain setup steps from active document
+  steps:
+    - intent: explain_setup
+    - action: action_explain_setup
+
+- rule: Extract commands from active document
+  steps:
+    - intent: extract_commands
+    - action: action_extract_commands
+
+- rule: Show troubleshooting guidance
+  steps:
+    - intent: show_troubleshooting
+    - action: action_show_troubleshooting
+
+- rule: Compare loaded documents
+  steps:
+    - intent: compare_documents
+    - action: action_compare_documents
+
+- rule: Reset loaded documents
+  steps:
+    - intent: reset_document
+    - action: action_reset_documents
 
 - rule: List loaded documents
   steps:
@@ -45,3 +75,4 @@ rules:
   steps:
     - intent: request_load_document
     - action: utter_ask_markdown_url
+

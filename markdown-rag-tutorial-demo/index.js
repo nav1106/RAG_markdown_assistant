@@ -28,7 +28,7 @@ async function main() {
   console.time("Chunk markdown");
   const splitter = new RecursiveCharacterTextSplitter({
     chunkSize: 1000,
-    chunkOverlap: 200,
+    chunkOverlap: 150,
     separators: ["\n\n", "\n", " ", ""],
   });
   const docs = [
