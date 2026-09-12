@@ -1,6 +1,6 @@
-# Markdown RAG Chatbot with Rasa, LangChain.js, and Ollama
+# Markdown RAG Chatbot with Rasa, Groq, Jina AI, and Qdrant
 
-This project is a browser-based chatbot that lets a user load a raw markdown document URL or local markdown file and then ask questions about it. The frontend uses React and Vite, while the backend uses Rasa for conversation routing, a Node.js RAG service for retrieval, and Ollama for local embeddings and LLM inference.
+This project is a browser-based chatbot that lets a user load a raw markdown document URL and then ask questions about it. The frontend uses React and Vite, while the backend uses Rasa for conversation routing, a Node.js RAG service for retrieval, Jina AI for embeddings, Groq for LLM answers, and Qdrant Cloud for vector storage.
 
 ## Overview
 
@@ -11,7 +11,7 @@ React + Vite frontend
   -> Rasa API server
   -> Rasa action server
   -> Node.js RAG server
-  -> Ollama
+  -> Jina AI embeddings + Qdrant retrieval + Groq chat model
   -> answer returned to the chat UI
 ```
 
@@ -21,7 +21,7 @@ React + Vite frontend
 
 The interface lives in `src/main.jsx` and `src/styles.css`. It lets the user:
 
-- load a markdown document from a raw URL or local `.md` file
+- load a markdown document from a raw URL
 - view the current document and all loaded sources
 - switch documents, summarize, ask questions, and clear chat history
 - view source metadata, loading states, and error banners
@@ -65,13 +65,12 @@ Endpoints used:
 
 ```text
 POST http://localhost:3000/load-document
-POST http://localhost:3000/load-markdown
 POST http://localhost:3000/ask
 ```
 
 ### Node.js RAG server
 
-The Node.js service downloads the markdown content, splits it into chunks, creates embeddings, retrieves the most relevant chunks, and sends them to the local model for an answer.
+The Node.js service downloads the markdown content, splits it into chunks, creates embeddings with Jina AI, stores and searches vectors in Qdrant, and sends retrieved context to Groq for the final answer.
 
 Endpoints:
 
@@ -87,15 +86,14 @@ POST /load-document
 POST /ask
 ```
 
-### Ollama
+### Hosted AI providers
 
-Ollama runs the local models used by the RAG pipeline.
-
-This project uses:
+This project uses hosted providers so it can be deployed for public users:
 
 ```text
-nomic-embed-text
-granite3.3:2b
+Groq      -> final chat answer generation
+Jina AI   -> markdown/query embeddings
+Qdrant    -> vector database
 ```
 
 ## Project structure
@@ -134,7 +132,9 @@ Before running the app, install:
 
 - Node.js 18+
 - Python 3.10
-- Ollama
+- Groq API key
+- Jina AI API key
+- Qdrant Cloud cluster URL and API key
 - Rasa
 - Rasa SDK
 
@@ -150,20 +150,11 @@ Example location:
 C:\Users\YourName\VSCode Folder\RAG_markdown_assistant
 ```
 
-### 2. Install Ollama models
+### 2. Configure hosted AI providers
 
-Start Ollama, then pull the required models:
+Copy `markdown-rag-tutorial-demo/.env.example` to `markdown-rag-tutorial-demo/.env`, then add your Groq, Jina AI, and Qdrant values.
 
-```bash
-ollama pull granite3.3:2b
-ollama pull nomic-embed-text
-```
-
-Check installed models:
-
-```bash
-ollama list
-```
+Use a new Qdrant collection name when changing embedding models or embedding dimensions.
 
 ### 3. Install Node.js dependencies
 
@@ -318,7 +309,6 @@ Bot: [Answer generated from the markdown document]
 3000  -> Node.js RAG server
 5005  -> Rasa API server
 5055  -> Rasa action server
-11434 -> Ollama
 ```
 
 If a port is already in use, check it with:
@@ -337,7 +327,9 @@ taskkill /PID YOUR_PID_HERE /F
 
 ### Loading a document
 
-When the user sends a markdown URL, Rasa detects the `provide_markdown_url` intent and triggers `action_load_markdown`.
+When the user sends a markdown URL, the React frontend sends the message to Rasa through the REST channel.
+
+Rasa detects the `provide_markdown_url` intent and triggers `action_load_markdown`.
 
 That action calls:
 
@@ -345,111 +337,116 @@ That action calls:
 POST http://localhost:3000/load-document
 ```
 
-The RAG server downloads the markdown file, chunks it, creates embeddings, and stores the document in memory for the current user session.
+The RAG server downloads the markdown file, splits it into chunks, creates embeddings with Jina AI, and stores those vectors in Qdrant Cloud with metadata such as `userId`, `documentId`, `documentName`, `sourceUrl`, `chunkIndex`, `heading`, and `createdAt`.
 
 ### Asking a question
 
-When the user asks a question, Rasa detects the `ask_documentation` intent and runs `action_answer_from_markdown`.
+When the user asks a question, Rasa detects the most relevant intent and runs the matching custom action.
 
-That action calls:
+For a normal documentation question, Rasa runs `action_answer_from_markdown`, which calls:
 
 ```text
 POST http://localhost:3000/ask
 ```
 
-The Node.js RAG service retrieves the most relevant chunks and asks the LLM for an answer based only on that context.
+The RAG server embeds the question with Jina AI, searches Qdrant for the most relevant chunks from the active document, sends that context to Groq, and returns the generated answer to Rasa. Rasa then sends the answer back to the React frontend.
+
+### Smart conversation flows
+
+Rasa also handles controlled flows such as:
+
+```text
+summarize current document
+list loaded documents
+switch document
+compare two documents
+reset current document
+explain setup steps
+extract commands
+show troubleshooting steps
+```
+
+This makes Rasa the conversation controller, while Groq only generates answers from retrieved context.
+
+## Security notes
+
+- Real secrets belong in `.env` files only.
+- `.env`, `auth-users.json`, Rasa models, Rasa cache, Python cache files, `node_modules`, and `dist` are ignored by git.
+- `markdown-rag-tutorial-demo/.env.example`, `rasa-bot/.env.example`, and the root `.env.example` are safe templates for other users.
+- For production, set `REQUIRE_AUTH=true` in `markdown-rag-tutorial-demo/.env`.
+- Use the same long random secret for `RASA_SERVICE_TOKEN` in the RAG server and `RAG_SERVICE_TOKEN` in the Rasa action server.
 
 ## Troubleshooting
 
-- If the chatbot says the document failed to load, confirm the RAG server is running on port 3000.
-- If the bot is unresponsive, confirm both the Rasa action server and API server are running.
-- If Ollama is not responding, make sure the model pull completed and `ollama serve` is active.
+- If the chatbot says it cannot reach Rasa, confirm the Rasa API server is running on port 5005.
+- If document loading fails, confirm the RAG server is running on port 3000 and the URL is a raw markdown URL.
+- If answers fail after changing embedding models, use a new Qdrant collection name or recreate the collection so the vector dimension matches `EMBEDDING_DIMENSION`.
+- If Groq or Jina requests fail, check that `GROQ_API_KEY`, `GROQ_CHAT_MODEL`, `JINA_API_KEY`, `JINA_EMBEDDING_MODEL`, and `EMBEDDING_DIMENSION` are set in `markdown-rag-tutorial-demo/.env`.
 - If a port is blocked, check the active process and terminate it before restarting the relevant service.
+
+## Current limitations
+
+- Email/password auth is local-file based and should be replaced with a managed auth provider before a serious production launch.
+- Rasa action server and RAG server are still separate local services until Docker/cloud deployment is added.
+- File upload is paused in the React frontend while the app is routed through Rasa-first document flows.
+- More Rasa NLU examples and tests should be added as the supported conversation flows grow.
+
+## Possible improvements
+
+- Add Docker Compose for local development.
+- Deploy the frontend and backend services to cloud platforms.
+- Add citations showing which markdown chunks were used.
+- Add managed production auth.
+- Add automated tests for Rasa actions and RAG API endpoints.
+- Add file upload through a Rasa-compatible backend flow.
+
+## Stopping the project
+
+Stop each running server by pressing `Ctrl + C` in its terminal.
+
+Stop these running commands:
+
+```text
+node rag-server.js
+rasa run actions
+rasa run --enable-api --cors "*"
+npm run dev
+```
+
+## Restarting later
+
+Run these again in separate terminals:
+
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\markdown-rag-tutorial-demo"
+node rag-server.js
+```
+
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"
+.venv\Scripts\activate
+rasa run actions
+```
+
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"
+.venv\Scripts\activate
+rasa run --enable-api --cors "*"
+```
+
+```bash
+cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant"
+npm run dev
+```
+
+Then open the Vite URL, usually:
+
+```text
+http://localhost:5173
+```
 
 ## License
 
-This project is intended for local development and experimentation. See the included project files for exact license terms where applicable.
+This project is intended for development and experimentation. See the included project files for exact license terms where applicable.
 
 
-The RAG server retrieves the most relevant markdown chunks and sends them to Ollama with the question.
-
-Ollama generates the final answer, which is returned to Rasa and displayed in the browser.
-
-Why Rasa Is Used
-----------------
-
-Rasa manages the conversation flow.
-
-The LLM generates answers, but Rasa decides what should happen next.
-
-For example:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   If the user sends a URL -> load the document  If the user asks a question -> answer from the document  If the user says hello -> greet them   `
-
-This makes the chatbot easier to control, test, and extend.
-
-Current Limitations
--------------------
-
-*   The vector store is stored in memory.
-    
-*   If the RAG server restarts, the document must be loaded again.
-    
-*   The project currently supports one active document at a time.
-    
-*   The frontend is a simple HTML page.
-    
-*   The Rasa training data is small and can be improved with more examples.
-    
-
-Possible Improvements
----------------------
-
-*   Add persistent vector storage using FAISS, Chroma, Qdrant, or pgvector.
-    
-*   Support multiple documents.
-    
-*   Add file upload support.
-    
-*   Add citations showing which markdown chunks were used.
-    
-*   Improve the frontend design.
-    
-*   Add authentication.
-    
-*   Add Docker setup.
-    
-*   Add tests for the Rasa actions and RAG API.
-    
-*   Deploy the frontend and backend services.
-    
-
-Stopping The Project
---------------------
-
-Stop each running server by pressing:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   Ctrl + C   `
-
-Stop these terminals:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   node rag-server.js  rasa run actions  rasa run --enable-api --cors "*"   `
-
-Ollama can usually stay running in the background.
-
-Restarting Later
-----------------
-
-Run these again:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\markdown-rag-tutorial-demo"  node rag-server.js   `
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"  .venv\Scripts\activate  rasa run actions   `
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   cd "C:\Users\YourName\VSCode Folder\RAG_markdown_assistant\rasa-bot"  .venv\Scripts\activate  rasa run --enable-api --cors "*"   `
-
-Then open:
-
-Plain textANTLR4BashCC#CSSCoffeeScriptCMakeDartDjangoDockerEJSErlangGitGoGraphQLGroovyHTMLJavaJavaScriptJSONJSXKotlinLaTeXLessLuaMakefileMarkdownMATLABMarkupObjective-CPerlPHPPowerShell.propertiesProtocol BuffersPythonRRubySass (Sass)Sass (Scss)SchemeSQLShellSwiftSVGTSXTypeScriptWebAssemblyYAMLXML`   chat.html   `
-
-Load a markdown URL again and start asking questions.

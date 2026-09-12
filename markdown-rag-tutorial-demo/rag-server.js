@@ -5,9 +5,7 @@ import { fileURLToPath } from "url";
 import express from "express";
 import fetch from "node-fetch";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { OllamaEmbeddings, ChatOllama } from "@langchain/ollama";
 import { Document } from "@langchain/core/documents";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,10 +13,13 @@ const __dirname = path.dirname(__filename);
 loadEnvFile(path.join(__dirname, ".env"));
 
 const PORT = getRequiredEnv("PORT");
-const OLLAMA_BASE_URL = getRequiredEnv("OLLAMA_BASE_URL");
-const EMBEDDING_MODEL = getRequiredEnv("EMBEDDING_MODEL");
+const JINA_API_KEY = getRequiredEnv("JINA_API_KEY");
+const JINA_EMBEDDING_URL = normalizeBaseUrl(process.env.JINA_EMBEDDING_URL || "https://api.jina.ai/v1/embeddings");
+const EMBEDDING_MODEL = getRequiredEnv("JINA_EMBEDDING_MODEL");
 const EMBEDDING_DIMENSION = Number(getRequiredEnv("EMBEDDING_DIMENSION"));
-const CHAT_MODEL = getRequiredEnv("CHAT_MODEL");
+const GROQ_API_KEY = getRequiredEnv("GROQ_API_KEY");
+const GROQ_CHAT_URL = normalizeBaseUrl(process.env.GROQ_CHAT_URL || "https://api.groq.com/openai/v1/chat/completions");
+const CHAT_MODEL = getRequiredEnv("GROQ_CHAT_MODEL");
 const QDRANT_URL = normalizeBaseUrl(getRequiredEnv("QDRANT_URL"));
 const QDRANT_API_KEY = getRequiredEnv("QDRANT_API_KEY");
 const QDRANT_COLLECTION = getRequiredEnv("QDRANT_COLLECTION");
@@ -51,54 +52,22 @@ const authUsers = new Map();
 const authTokens = new Map();
 const googleStates = new Map();
 
-const embeddings = new OllamaEmbeddings({
-  model: EMBEDDING_MODEL,
-  baseUrl: OLLAMA_BASE_URL,
-});
-
-const llm = new ChatOllama({
-  model: CHAT_MODEL,
-  temperature: 0.1,
-  baseUrl: OLLAMA_BASE_URL,
-});
-
-const promptTemplate = ChatPromptTemplate.fromMessages([
-  [
-    "system",
-    `You are an expert documentation assistant.
+const answerSystemPrompt = `You are an expert documentation assistant.
 
 Use only the provided context to answer the user's question.
-
-Context:
-{context}
 
 Guidelines:
 - Answer accurately using the context.
 - Include relevant code examples when the context contains them.
 - Mention when the answer is not available in the provided context.
-- Keep the answer clear and helpful.`,
-  ],
-  ["human", "{question}"],
-]);
+- Keep the answer clear and helpful.`;
 
-const comparePromptTemplate = ChatPromptTemplate.fromMessages([
-  [
-    "system",
-    `You compare two markdown documents using only the provided context.
-
-Document A context:
-{leftContext}
-
-Document B context:
-{rightContext}
+const compareSystemPrompt = `You compare two markdown documents using only the provided context.
 
 Guidelines:
 - Compare purpose, setup, usage, features, and important differences.
 - Be clear when the provided context is not enough.
-- Keep the response practical and structured.`,
-  ],
-  ["human", "{question}"],
-]);
+- Keep the response practical and structured.`;
 
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
@@ -290,6 +259,14 @@ async function ensureQdrantCollection() {
       method: "PUT",
       body: JSON.stringify({ vectors: { size: EMBEDDING_DIMENSION, distance: "Cosine" } }),
     });
+  } else {
+    const data = await response.json();
+    const existingSize = data.result?.config?.params?.vectors?.size;
+    if (existingSize && Number(existingSize) !== EMBEDDING_DIMENSION) {
+      throw new Error(
+        `Qdrant collection ${QDRANT_COLLECTION} uses vector size ${existingSize}, but EMBEDDING_DIMENSION is ${EMBEDDING_DIMENSION}. Use a new QDRANT_COLLECTION name or recreate the collection.`
+      );
+    }
   }
 
   await ensurePayloadIndexes();
@@ -462,7 +439,7 @@ async function buildVectorStoreFromMarkdownContent(markdown, url, userId, docume
   const createdAt = new Date().toISOString();
   const docs = [new Document({ pageContent: markdown, metadata: { source: url, userId, documentId, documentName } })];
   const chunks = await splitter.splitDocuments(docs);
-  const vectors = await embeddings.embedDocuments(chunks.map((chunk) => chunk.pageContent));
+  const vectors = await embedTexts(chunks.map((chunk) => chunk.pageContent), "retrieval.passage");
 
   await deleteExistingDocumentChunks(userId, documentId);
   await upsertChunks(chunks, vectors, { userId, documentId, documentName, sourceUrl: url, createdAt });
@@ -477,20 +454,55 @@ async function buildVectorStoreFromMarkdownContent(markdown, url, userId, docume
   };
 }
 
-function normalizeModelResponse(response) {
-  if (typeof response.content === "string") return response.content;
-  if (Array.isArray(response.content)) {
-    return response.content.map((part) => {
-      if (typeof part === "string") return part;
-      if (part && typeof part.text === "string") return part.text;
-      return "";
-    }).join("").trim();
-  }
-  return String(response.content ?? "");
+function extractEmbeddings(data) {
+  if (!Array.isArray(data?.data)) throw new Error("Jina did not return embeddings data.");
+  return data.data
+    .sort((a, b) => a.index - b.index)
+    .map((item) => item.embedding);
+}
+
+async function embedTexts(input, task) {
+  const texts = Array.isArray(input) ? input : [input];
+  const response = await fetch(JINA_EMBEDDING_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${JINA_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: EMBEDDING_MODEL,
+      input: texts,
+      task,
+      dimensions: EMBEDDING_DIMENSION,
+      embedding_type: "float",
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Jina embedding request failed: ${response.status} ${JSON.stringify(data)}`);
+  const vectors = extractEmbeddings(data);
+  return Array.isArray(input) ? vectors : vectors[0];
+}
+
+async function createChatCompletion(messages) {
+  const response = await fetch(GROQ_CHAT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: CHAT_MODEL,
+      messages,
+      temperature: 0.1,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`Groq chat request failed: ${response.status} ${JSON.stringify(data)}`);
+  return data.choices?.[0]?.message?.content?.trim() || "I could not generate an answer from the retrieved context.";
 }
 
 async function searchDocumentContext(userId, documentId, query, limit = 5) {
-  const questionVector = await embeddings.embedQuery(query);
+  const questionVector = await embedTexts(query, "retrieval.query");
   const data = await qdrantRequest(`/collections/${encodeURIComponent(QDRANT_COLLECTION)}/points/search`, {
     method: "POST",
     body: JSON.stringify({
@@ -517,11 +529,13 @@ async function answerQuestion(question, userId, documentId) {
   session.activeDocumentId = targetDocument.documentId;
   const relevantDocs = await searchDocumentContext(userId, targetDocument.documentId, question, 5);
   const context = relevantDocs.map((point) => point.payload?.content).filter(Boolean).join("\n\n");
-  const promptMessages = await promptTemplate.formatMessages({ context, question });
-  const response = await llm.invoke(promptMessages);
+  const answer = await createChatCompletion([
+    { role: "system", content: `${answerSystemPrompt}\n\nContext:\n${context}` },
+    { role: "user", content: question },
+  ]);
 
   return {
-    answer: normalizeModelResponse(response),
+    answer,
     userId,
     document: targetDocument,
     retrievedChunks: relevantDocs.length,
@@ -542,11 +556,13 @@ async function compareDocuments(userId, leftIdentifier, rightIdentifier, questio
   const rightDocs = await searchDocumentContext(userId, rightDocument.documentId, compareQuestion, 6);
   const leftContext = leftDocs.map((point) => point.payload?.content).filter(Boolean).join("\n\n");
   const rightContext = rightDocs.map((point) => point.payload?.content).filter(Boolean).join("\n\n");
-  const promptMessages = await comparePromptTemplate.formatMessages({ leftContext, rightContext, question: compareQuestion });
-  const response = await llm.invoke(promptMessages);
+  const answer = await createChatCompletion([
+    { role: "system", content: `${compareSystemPrompt}\n\nDocument A context:\n${leftContext}\n\nDocument B context:\n${rightContext}` },
+    { role: "user", content: compareQuestion },
+  ]);
 
   return {
-    answer: normalizeModelResponse(response),
+    answer,
     userId,
     documents: [leftDocument, rightDocument],
     retrievedChunks: leftDocs.length + rightDocs.length,
@@ -731,7 +747,8 @@ app.use((error, req, res, next) => {
 app.listen(PORT, async () => {
   await ensureQdrantCollection();
   console.log(`RAG server is running at http://localhost:${PORT}`);
-  console.log(`Using Ollama at ${OLLAMA_BASE_URL}`);
+  console.log(`Using Groq chat model ${CHAT_MODEL}`);
+  console.log(`Using Jina embedding model ${EMBEDDING_MODEL}`);
   console.log(`Using Qdrant collection ${QDRANT_COLLECTION}`);
 
   if (!DEFAULT_MARKDOWN_URL) {

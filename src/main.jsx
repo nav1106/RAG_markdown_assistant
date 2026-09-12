@@ -54,10 +54,30 @@ async function rasaMessage(sender, message) {
   return Array.isArray(data) ? data : [];
 }
 
-function formatAnswer(text) {
-  return String(text).split(/(\*\*[^*]+\*\*)/g).map((part, index) =>
-    part.startsWith("**") && part.endsWith("**") ? <strong key={index}>{part.slice(2, -2)}</strong> : part,
-  );
+function renderInlineMarkdown(text) {
+  return String(text).split(/(`[^`]+`|\*\*[^*]+\*\*)/g).map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith("`") && part.endsWith("`")) return <code key={index}>{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
+function MarkdownMessage({ text }) {
+  return String(text).split(/\r?\n/).map((line, index) => {
+    const trimmed = line.trim();
+    if (!trimmed) return <br key={index} />;
+
+    const heading = trimmed.match(/^#{1,4}\s+(.+)$/);
+    if (heading) return <h4 className="markdown-heading" key={index}>{renderInlineMarkdown(heading[1])}</h4>;
+
+    const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+    if (bullet) return <p className="markdown-list-item" key={index}><span>•</span><span>{renderInlineMarkdown(bullet[1])}</span></p>;
+
+    const numbered = trimmed.match(/^(\d+)\.\s+(.+)$/);
+    if (numbered) return <p className="markdown-list-item" key={index}><span>{numbered[1]}.</span><span>{renderInlineMarkdown(numbered[2])}</span></p>;
+
+    return <p key={index}>{renderInlineMarkdown(line)}</p>;
+  });
 }
 
 function AuthScreen({ onAuthenticated, theme, onToggleTheme }) {
@@ -122,12 +142,11 @@ function Workspace({ auth, onLogout, theme, onToggleTheme }) {
         return;
       }
 
-      const assistantMessages = replies.map((reply) => ({
-        role: "assistant",
-        text: reply.text || reply.image || "I received a response from Rasa, but it did not include displayable text.",
-        meta: "document assistant",
-      }));
-      setMessages((current) => [...current, ...assistantMessages]);
+      const combinedReply = replies
+        .map((reply) => reply.text || reply.image || "I received a response from Rasa, but it did not include displayable text.")
+        .filter(Boolean)
+        .join("\n\n");
+      setMessages((current) => [...current, { role: "assistant", text: combinedReply }]);
     } catch (requestError) {
       setError("I could not reach Rasa. Make sure `rasa run --enable-api --cors \"*\"` is running on port 5005.");
     } finally {
@@ -184,7 +203,7 @@ function Workspace({ auth, onLogout, theme, onToggleTheme }) {
 
         <section className="chat-panel">
           <div className="chat-header"><div><h2>Chat with your documents</h2></div><div className="quick-actions"><button type="button" onClick={() => sendToRasa("summarize current document") } disabled={busy}>Summarize</button><button type="button" className="ghost-button" onClick={() => setMessages([])} disabled={!messages.length}>Clear history</button></div></div>
-          <div className="chat-history" aria-live="polite">{messages.length ? messages.map((message, index) => <div className={`message ${message.role}`} key={`${message.role}-${index}`}><div className="message-label">{message.role === "user" ? "You" : "Assistant"}</div><div className="message-text">{formatAnswer(message.text)}</div>{message.meta && <div className="message-meta">{message.meta}</div>}</div>) : <div className="empty-chat"><div className="empty-symbol">?</div><h3>Your conversation is clear</h3><p>Send a raw markdown URL or ask what this assistant can do.</p></div>}{busy && <div className="message assistant loading"><div className="message-label">Assistant</div><div className="loading-line" /><div className="loading-line short" /></div>}</div>
+          <div className="chat-history" aria-live="polite">{messages.length ? messages.map((message, index) => <div className={`message ${message.role}`} key={`${message.role}-${index}`}><div className="message-label">{message.role === "user" ? "You" : "Assistant"}</div><div className="message-text"><MarkdownMessage text={message.text} /></div>{message.meta && <div className="message-meta">{message.meta}</div>}</div>) : <div className="empty-chat"><div className="empty-symbol">?</div><h3>Your conversation is clear</h3><p>Send a raw markdown URL or ask what this assistant can do.</p></div>}{busy && <div className="message assistant loading"><div className="message-label">Assistant</div><div className="loading-line" /><div className="loading-line short" /></div>}</div>
           <form className="composer" onSubmit={(event) => { event.preventDefault(); sendToRasa(question); }}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a question or choose a shortcut..." disabled={busy} /><button type="submit" disabled={!question.trim() || busy}>Send <span>↗</span></button></form>
         </section>
       </div>
@@ -225,6 +244,7 @@ function App() {
 }
 
 createRoot(document.getElementById("root")).render(<App />);
+
 
 
 
