@@ -270,3 +270,5 @@ ENTRYPOINT []
 ```
 
 Render provides the `PORT` value in production, so these commands must read it instead of only using local ports.
+
+If Render starts Rasa but times out while Rasa is loading the model, keep `rasa-bot/config.yml` lightweight for deployment. This project is mostly rule-based, so the cloud config should use `LogisticRegressionClassifier` plus `RulePolicy` instead of heavier neural policies such as `TEDPolicy` and `UnexpecTEDIntentPolicy`.
