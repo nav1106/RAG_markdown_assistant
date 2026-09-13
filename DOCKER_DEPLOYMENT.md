@@ -260,7 +260,7 @@ python -m rasa_sdk --actions actions --port ${PORT:-5055}
 If the Rasa API service fails because Render cannot detect a port, make sure `rasa-bot/Dockerfile` starts Rasa with:
 
 ```txt
-rasa run --enable-api --cors '*' --host 0.0.0.0 --port ${PORT:-5005} --endpoints endpoints.cloud.yml
+rasa run --enable-api --cors '*' --interface 0.0.0.0 --port ${PORT:-5005} --endpoints endpoints.cloud.yml
 ```
 
 The `rasa/rasa` image has its own default entry command, so `rasa-bot/Dockerfile` also needs:

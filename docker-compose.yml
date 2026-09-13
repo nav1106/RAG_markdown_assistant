@@ -29,7 +29,7 @@ services:
     build:
       context: ./rasa-bot
       dockerfile: Dockerfile
-    command: run --enable-api --cors "*" --host 0.0.0.0 --port 5005 --endpoints endpoints.cloud.yml
+    command: run --enable-api --cors "*" --interface 0.0.0.0 --port 5005 --endpoints endpoints.cloud.yml
     environment:
       ACTION_ENDPOINT_URL: http://rasa-actions:5055/webhook
     ports:
