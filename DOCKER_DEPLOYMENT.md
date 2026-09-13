@@ -254,7 +254,7 @@ If the RAG server fails with `Invalid URL`, check that `QDRANT_URL` is the real 
 If the Rasa actions service exits immediately after a successful Docker build, make sure `rasa-bot/Dockerfile.actions` starts the action server with:
 
 ```txt
-python -m rasa_sdk --actions actions --host 0.0.0.0 --port ${PORT:-5055}
+python -m rasa_sdk --actions actions --port ${PORT:-5055}
 ```
 
 If the Rasa API service fails because Render cannot detect a port, make sure `rasa-bot/Dockerfile` starts Rasa with:
