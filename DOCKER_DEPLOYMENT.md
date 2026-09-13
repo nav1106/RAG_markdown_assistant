@@ -263,4 +263,10 @@ If the Rasa API service fails because Render cannot detect a port, make sure `ra
 rasa run --enable-api --cors '*' --host 0.0.0.0 --port ${PORT:-5005} --endpoints endpoints.cloud.yml
 ```
 
+The `rasa/rasa` image has its own default entry command, so `rasa-bot/Dockerfile` also needs:
+
+```txt
+ENTRYPOINT []
+```
+
 Render provides the `PORT` value in production, so these commands must read it instead of only using local ports.
