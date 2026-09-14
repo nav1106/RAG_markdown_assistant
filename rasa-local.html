@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local Rasa Markdown Assistant</title>
+    <style>
+      :root {
+        color: #eaf3ee;
+        background: #07191b;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      body { min-width: 320px; min-height: 100vh; margin: 0; background: #07191b; }
+      button, input { font: inherit; }
+      button { cursor: pointer; }
+      button:disabled, input:disabled { cursor: not-allowed; opacity: .55; }
+
+      .shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 26px 0;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 9px;
+        background: #e9c46a;
+        color: #102d30;
+        font-weight: 800;
+      }
+
+      h1, h2, p { margin-top: 0; }
+      h1 { margin-bottom: 3px; font-size: 22px; }
+      .subtitle { margin: 0; color: #93ada5; font-size: 13px; }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #aac8bd;
+        font-size: 12px;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #f0b35f;
+        box-shadow: 0 0 0 4px rgba(240, 179, 95, .13);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 310px 1fr;
+        min-height: 720px;
+        overflow: hidden;
+        border: 1px solid rgba(188, 224, 211, .16);
+        border-radius: 16px;
+        background: #0a2023;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, .28);
+      }
+
+      aside {
+        padding: 22px;
+        border-right: 1px solid rgba(188, 224, 211, .13);
+        background: #102b2d;
+      }
+
+      .card {
+        padding: 16px;
+        border: 1px solid rgba(233, 196, 106, .36);
+        border-radius: 8px;
+        background: #133637;
+      }
+
+      .card h2 { margin-bottom: 8px; font-size: 18px; }
+      .card p, .note { color: #91ada4; font-size: 12px; line-height: 1.6; }
+
+      .load-box {
+        margin-top: 22px;
+        padding: 14px;
+        border: 1px solid rgba(188, 224, 211, .16);
+        border-radius: 8px;
+        background: #0b2426;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 7px;
+        color: #a7c7bc;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .url-row {
+        display: flex;
+        gap: 7px;
+      }
+
+      input {
+        min-width: 0;
+        width: 100%;
+        border: 1px solid rgba(188, 224, 211, .2);
+        border-radius: 7px;
+        outline: 0;
+        background: rgba(0, 0, 0, .2);
+        color: #eef7f2;
+        padding: 11px;
+        font-size: 12px;
+      }
+
+      input:focus { border-color: #e9c46a; }
+
+      button {
+        border: 1px solid rgba(188, 224, 211, .22);
+        border-radius: 7px;
+        background: transparent;
+        color: #cae1d8;
+        padding: 10px 12px;
+        font-size: 12px;
+      }
+
+      .primary {
+        border: 0;
+        background: #e9c46a;
+        color: #112f31;
+        font-weight: 800;
+      }
+
+      .quick {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 22px;
+      }
+
+      .quick button {
+        background: rgba(188, 224, 211, .055);
+        text-align: left;
+      }
+
+      .quick button:hover {
+        border-color: #e9c46a;
+        color: #e9c46a;
+      }
+
+      .chat {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-width: 0;
+      }
+
+      .chat-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 22px 26px;
+        border-bottom: 1px solid rgba(188, 224, 211, .13);
+      }
+
+      .chat-head h2 { margin: 0; font-size: 18px; }
+
+      .history {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        overflow-y: auto;
+        padding: 25px;
+      }
+
+      .message {
+        max-width: min(730px, 88%);
+        padding: 13px 15px;
+        border: 1px solid rgba(188, 224, 211, .14);
+        border-radius: 5px 13px 13px 13px;
+        background: rgba(150, 195, 178, .07);
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .message.user {
+        align-self: flex-end;
+        border-color: rgba(233, 196, 106, .22);
+        border-radius: 13px 5px 13px 13px;
+        background: rgba(233, 196, 106, .12);
+      }
+
+      .label {
+        margin-bottom: 7px;
+        color: #e9c46a;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+      }
+
+      .message.user .label { color: #b9d1c7; }
+      .text { color: #dcebe3; font-size: 13px; line-height: 1.65; }
+      .text p { margin: 0 0 9px; }
+      .text p:last-child { margin-bottom: 0; }
+      .text h4 { margin: 12px 0 7px; color: #f5f0e5; font-size: 14px; }
+      .text h4:first-child { margin-top: 0; }
+      .text code {
+        border: 1px solid rgba(190, 227, 211, .16);
+        border-radius: 4px;
+        background: rgba(0, 0, 0, .2);
+        color: #f0d28a;
+        padding: 1px 4px;
+      }
+
+      .list-line {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 8px;
+      }
+
+      .composer {
+        display: flex;
+        gap: 10px;
+        padding: 18px 25px 24px;
+        border-top: 1px solid rgba(188, 224, 211, .13);
+      }
+
+      .composer input { padding: 13px; font-size: 13px; }
+      .composer button { padding: 0 18px; }
+
+      .error {
+        display: none;
+        margin-bottom: 14px;
+        padding: 11px 13px;
+        border: 1px solid rgba(232, 137, 116, .48);
+        border-radius: 8px;
+        background: rgba(111, 38, 30, .36);
+        color: #ffd2c5;
+        font-size: 12px;
+      }
+
+      .error.visible { display: block; }
+
+      @media (max-width: 780px) {
+        .layout { grid-template-columns: 1fr; }
+        aside { border-right: 0; border-bottom: 1px solid rgba(188, 224, 211, .13); }
+        .chat { min-height: 620px; }
+        .topbar { align-items: flex-start; flex-direction: column; }
+        .chat-head { align-items: flex-start; flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="mark">RA</div>
+          <div>
+            <h1>Local Rasa Markdown Assistant</h1>
+            <p class="subtitle">Visual frontend for the local Rasa orchestration flow</p>
+          </div>
+        </div>
+        <div class="status"><span class="dot"></span><span>Rasa API: http://localhost:5005</span></div>
+      </header>
+
+      <div id="error" class="error"></div>
+
+      <section class="layout">
+        <aside>
+          <div class="card">
+            <h2>Rasa Demo Mode</h2>
+            <p>This local page sends every message to Rasa first. Rasa detects the intent, runs the right custom action, and the action server calls the RAG backend.</p>
+          </div>
+
+          <form id="load-form" class="load-box">
+            <label for="url">Raw markdown URL</label>
+            <div class="url-row">
+              <input id="url" placeholder="https://raw.githubusercontent.com/.../README.md" />
+              <button class="primary" type="submit">Load</button>
+            </div>
+            <p class="note">Start the RAG server, Rasa action server, and Rasa API before using this page.</p>
+          </form>
+
+          <div class="quick">
+            <button data-prompt="list documents">List docs</button>
+            <button data-prompt="summarize current document">Summarize</button>
+            <button data-prompt="explain setup steps">Setup</button>
+            <button data-prompt="extract commands">Commands</button>
+            <button data-prompt="show troubleshooting steps">Troubleshoot</button>
+            <button data-prompt="compare document 1 and document 2">Compare</button>
+          </div>
+        </aside>
+
+        <section class="chat">
+          <div class="chat-head">
+            <h2>Chat Through Rasa</h2>
+            <button id="clear" type="button">Clear history</button>
+          </div>
+          <div id="history" class="history"></div>
+          <form id="composer" class="composer">
+            <input id="message" placeholder="Ask through Rasa..." autocomplete="off" />
+            <button class="primary" type="submit">Send</button>
+          </form>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const RASA_URL = "http://localhost:5005";
+      const SENDER_KEY = "markdown-rag-local-rasa-sender";
+      const sender = localStorage.getItem(SENDER_KEY) || `local-rasa-${crypto.randomUUID()}`;
+      localStorage.setItem(SENDER_KEY, sender);
+
+      const historyEl = document.querySelector("#history");
+      const errorEl = document.querySelector("#error");
+      const messageInput = document.querySelector("#message");
+      const urlInput = document.querySelector("#url");
+
+      const messages = [
+        { role: "assistant", text: "Hey. This is the local Rasa-powered interface. Send a raw markdown URL, then ask questions about it." },
+      ];
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function inlineMarkdown(value) {
+        return escapeHtml(value)
+          .replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      }
+
+      function markdownToHtml(text) {
+        return String(text).split(/\r?\n/).map((line) => {
+          const trimmed = line.trim();
+          if (!trimmed) return "<br />";
+
+          const heading = trimmed.match(/^#{1,4}\s+(.+)$/);
+          if (heading) return `<h4>${inlineMarkdown(heading[1])}</h4>`;
+
+          const bullet = trimmed.match(/^[-*]\s+(.+)$/);
+          if (bullet) return `<p class="list-line"><span>-</span><span>${inlineMarkdown(bullet[1])}</span></p>`;
+
+          const numbered = trimmed.match(/^(\d+)\.\s+(.+)$/);
+          if (numbered) return `<p class="list-line"><span>${numbered[1]}.</span><span>${inlineMarkdown(numbered[2])}</span></p>`;
+
+          return `<p>${inlineMarkdown(line)}</p>`;
+        }).join("");
+      }
+
+      function setError(message) {
+        errorEl.textContent = message || "";
+        errorEl.classList.toggle("visible", Boolean(message));
+      }
+
+      function render() {
+        historyEl.innerHTML = messages.map((message) => `
+          <div class="message ${message.role}">
+            <div class="label">${message.role === "user" ? "You" : "Rasa Assistant"}</div>
+            <div class="text">${markdownToHtml(message.text)}</div>
+          </div>
+        `).join("");
+        historyEl.scrollTop = historyEl.scrollHeight;
+      }
+
+      async function sendToRasa(text) {
+        const clean = text.trim();
+        if (!clean) return;
+
+        setError("");
+        messages.push({ role: "user", text: clean });
+        messages.push({ role: "assistant", text: "Thinking through Rasa..." });
+        render();
+
+        try {
+          const response = await fetch(`${RASA_URL}/webhooks/rest/webhook`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sender, message: clean }),
+          });
+
+          const replies = await response.json().catch(() => []);
+          if (!response.ok) throw new Error(`Rasa returned status ${response.status}`);
+
+          const replyText = Array.isArray(replies) && replies.length
+            ? replies.map((reply) => reply.text || reply.image || "").filter(Boolean).join("\n\n")
+            : "Rasa did not return a message.";
+
+          messages.pop();
+          messages.push({ role: "assistant", text: replyText });
+        } catch (error) {
+          messages.pop();
+          setError('Could not reach local Rasa. Start it with: rasa run --enable-api --cors "*"');
+        }
+
+        render();
+      }
+
+      document.querySelector("#composer").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const text = messageInput.value;
+        messageInput.value = "";
+        sendToRasa(text);
+      });
+
+      document.querySelector("#load-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const url = urlInput.value.trim();
+        if (!url) return;
+        urlInput.value = "";
+        sendToRasa(`load this document ${url}`);
+      });
+
+      document.querySelector("#clear").addEventListener("click", () => {
+        messages.splice(0, messages.length, { role: "assistant", text: "History cleared. Send a markdown URL or ask your next question." });
+        render();
+      });
+
+      document.querySelectorAll("[data-prompt]").forEach((button) => {
+        button.addEventListener("click", () => sendToRasa(button.dataset.prompt));
+      });
+
+      render();
+    </script>
+  </body>
+</html>

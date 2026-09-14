@@ -4,14 +4,14 @@ This guide shows how to run the Markdown RAG Assistant with Docker locally, then
 
 ## What Runs Where
 
-Local Docker Compose starts four services:
+Local Docker Compose can start four services:
 
 - `frontend`: React app served by Nginx on `http://localhost:5173`
 - `rag-server`: Node.js RAG API on `http://localhost:3000`
 - `rasa-actions`: Python Rasa custom action server on `http://localhost:5055`
 - `rasa-api`: Rasa chatbot API on `http://localhost:5005`
 
-In Docker, services talk to each other by container name:
+For the local Rasa demo, services talk to each other by container name:
 
 - Rasa actions call `http://rag-server:3000`
 - Rasa API calls `http://rasa-actions:5055/webhook`
@@ -109,17 +109,17 @@ For global usage, use:
 
 - Frontend: Vercel or Cloudflare Pages
 - RAG server: Render web service
-- Rasa API: Render web service
-- Rasa actions: Render web service
 - Vector database: Qdrant Cloud
 - LLM: Groq
 - Embeddings: Jina AI
 
 Do not use Ollama for public deployment because Ollama runs on your laptop.
 
+Rasa is kept for local/demo orchestration, but the deployed free-tier app should call the RAG server directly. This avoids keeping a heavy Rasa API service alive on Render free tier.
+
 ## 6. Deploy Backend On Render
 
-Create three Render web services from the same GitHub repository.
+Create one Render web service from the GitHub repository.
 
 ### RAG Server
 
@@ -143,7 +143,6 @@ EMBEDDING_DIMENSION=1024
 QDRANT_URL=https://your-qdrant-cluster-url
 QDRANT_API_KEY=your-qdrant-api-key
 QDRANT_COLLECTION=markdown_chunks_jina
-RASA_SERVICE_TOKEN=the-same-long-secret-used-by-rasa-actions
 AUTH_TOKEN_SECRET=another-long-random-secret-for-login-sessions
 REQUIRE_AUTH=false
 FRONTEND_URL=https://your-frontend-domain
@@ -153,51 +152,6 @@ After deployment, copy the Render URL. It will look like:
 
 ```txt
 https://your-rag-server.onrender.com
-```
-
-### Rasa Actions
-
-Settings:
-
-```txt
-Root directory: rasa-bot
-Runtime: Docker
-Dockerfile: rasa-bot/Dockerfile.actions
-```
-
-Environment variables:
-
-```env
-RAG_SERVER_URL=https://your-rag-server.onrender.com
-RAG_SERVICE_TOKEN=the-same-long-secret-used-by-rag-server
-```
-
-After deployment, copy the Render URL. It will look like:
-
-```txt
-https://your-rasa-actions.onrender.com
-```
-
-### Rasa API
-
-Settings:
-
-```txt
-Root directory: rasa-bot
-Runtime: Docker
-Dockerfile: rasa-bot/Dockerfile
-```
-
-Environment variables:
-
-```env
-ACTION_ENDPOINT_URL=https://your-rasa-actions.onrender.com/webhook
-```
-
-After deployment, copy the Render URL. It will look like:
-
-```txt
-https://your-rasa-api.onrender.com
 ```
 
 ## 7. Deploy Frontend On Vercel
@@ -215,7 +169,6 @@ Output directory: dist
 Environment variables:
 
 ```env
-VITE_RASA_URL=https://your-rasa-api.onrender.com
 VITE_RAG_AUTH_URL=https://your-rag-server.onrender.com
 ```
 
@@ -244,9 +197,7 @@ Groq and Jina are hosted APIs, so global users do not depend on your laptop.
 - `.env` files are not committed.
 - Qdrant collection matches `EMBEDDING_DIMENSION`.
 - RAG server health route works.
-- Rasa actions service can call the RAG server.
-- Rasa API service can call the Rasa actions service.
-- Frontend has the deployed Rasa API URL.
+- Frontend has the deployed RAG server URL.
 - RAG server has the deployed frontend URL for CORS.
 
 ## 11. Render Troubleshooting Notes

@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 
 const AUTH_API_URL = import.meta.env.VITE_RAG_AUTH_URL || "http://localhost:3000";
-const RASA_URL = import.meta.env.VITE_RASA_URL || "http://localhost:5005";
 const USER_KEY = "markdown-rag-user-id";
 const AUTH_KEY = "markdown-rag-auth";
 
@@ -47,17 +46,6 @@ async function authRequest(path, options = {}) {
   return data;
 }
 
-async function rasaMessage(sender, message) {
-  const response = await fetch(`${RASA_URL}/webhooks/rest/webhook`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sender, message }),
-  });
-  const data = await response.json().catch(() => []);
-  if (!response.ok) throw new Error(`Rasa request failed with status ${response.status}`);
-  return Array.isArray(data) ? data : [];
-}
-
 function renderInlineMarkdown(text) {
   return String(text).split(/(`[^`]+`|\*\*[^*]+\*\*)/g).map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) return <strong key={index}>{part.slice(2, -2)}</strong>;
@@ -82,6 +70,50 @@ function MarkdownMessage({ text }) {
 
     return <p key={index}>{renderInlineMarkdown(line)}</p>;
   });
+}
+
+function getMarkdownUrl(text) {
+  return String(text).match(/https?:\/\/\S+/)?.[0]?.replace(/[),.]+$/, "") || "";
+}
+
+function getDocumentNumbers(text) {
+  const normalized = String(text).toLowerCase()
+    .replace(/\b(first|1st|one)\b/g, "1")
+    .replace(/\b(second|2nd|two)\b/g, "2")
+    .replace(/\b(third|3rd|three)\b/g, "3")
+    .replace(/\b(fourth|4th|four)\b/g, "4")
+    .replace(/\b(fifth|5th|five)\b/g, "5");
+  return normalized.match(/\b[1-5]\b/g) || [];
+}
+
+function getDocumentReference(text) {
+  return String(text)
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/\b(switch|change|select|use|open|to|document|doc|file|active|the)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatDocumentList(documents = []) {
+  if (!documents.length) return "You do not have any loaded documents yet. Add a raw markdown URL to get started.";
+  return `Your loaded documents:\n${documents.map((document, index) => {
+    const name = document.name || document.documentId || "document";
+    const status = document.isActive ? "active" : "loaded";
+    return `${index + 1}. **${name}** (${status}, ${document.chunkCount || 0} chunks)`;
+  }).join("\n")}`;
+}
+
+function formatLoadedDocument(data) {
+  const document = data.document || {};
+  const name = document.name || "document";
+  const chunkCount = document.chunkCount || 0;
+  const total = data.documents?.length || 1;
+  return `Loaded **${name}** and made it active. I found ${chunkCount} chunks. You now have ${total} document(s) loaded.`;
+}
+
+function formatActiveDocument(data) {
+  const name = data.activeDocument?.name || "that document";
+  return `Switched to **${name}**. Ask me a question about it whenever you're ready.`;
 }
 
 function AuthScreen({ onAuthenticated, theme, onToggleTheme }) {
@@ -130,7 +162,7 @@ function Workspace({ auth, onLogout, theme, onToggleTheme }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const displayName = auth?.user?.name || auth?.user?.email || "My account";
 
-  async function sendToRasa(text, { showUser = true } = {}) {
+  async function sendMessage(text, { showUser = true } = {}) {
     const cleanMessage = text.trim();
     if (!cleanMessage || busy) return;
 
@@ -140,19 +172,41 @@ function Workspace({ auth, onLogout, theme, onToggleTheme }) {
     setBusy(true);
 
     try {
-      const replies = await rasaMessage(userId, cleanMessage);
-      if (!replies.length) {
-        setMessages((current) => [...current, { role: "assistant", text: "Rasa did not return a message." }]);
-        return;
+      const lower = cleanMessage.toLowerCase();
+      const url = getMarkdownUrl(cleanMessage);
+      let replyText = "";
+
+      if (url && (lower.includes("load") || lower.includes("readme") || lower.includes(".md") || lower === url.toLowerCase())) {
+        const data = await authRequest("/load-document", { method: "POST", body: JSON.stringify({ url, userId }) });
+        replyText = formatLoadedDocument(data);
+      } else if (/\b(list|show)\b.*\b(document|documents|docs|files)\b/.test(lower)) {
+        const data = await authRequest(`/documents?userId=${encodeURIComponent(userId)}`);
+        replyText = formatDocumentList(data.documents);
+      } else if (/\b(switch|change|select|use|open)\b.*\b(document|doc|file|active|to)\b/.test(lower)) {
+        const reference = getDocumentReference(cleanMessage) || getDocumentNumbers(cleanMessage)[0];
+        if (!reference) {
+          replyText = "Tell me which document to switch to. You can say `switch to 1` or `switch to README.md`.";
+        } else {
+          const data = await authRequest("/switch-document", { method: "POST", body: JSON.stringify({ userId, documentId: reference }) });
+          replyText = formatActiveDocument(data);
+        }
+      } else if (/\bcompare\b/.test(lower)) {
+        const [leftDocumentId, rightDocumentId] = getDocumentNumbers(cleanMessage);
+        const data = await authRequest("/compare-documents", { method: "POST", body: JSON.stringify({ userId, leftDocumentId, rightDocumentId, question: cleanMessage }) });
+        replyText = data.answer || "I could not compare those documents.";
+      } else if (/\b(reset|remove|clear|delete)\b.*\b(document|documents|doc|docs|file|files)\b/.test(lower)) {
+        const data = await authRequest("/reset-active-document", { method: "POST", body: JSON.stringify({ userId }) });
+        replyText = data.message || "The active document has been removed.";
+      } else {
+        const data = await authRequest("/ask", { method: "POST", body: JSON.stringify({ question: cleanMessage, userId }) });
+        const documentName = data.document?.name;
+        replyText = documentName ? `Using **${documentName}**:\n\n${data.answer}` : data.answer;
       }
 
-      const combinedReply = replies
-        .map((reply) => reply.text || reply.image || "I received a response from Rasa, but it did not include displayable text.")
-        .filter(Boolean)
-        .join("\n\n");
-      setMessages((current) => [...current, { role: "assistant", text: combinedReply }]);
+      setMessages((current) => [...current, { role: "assistant", text: replyText || "I could not find an answer in the active document." }]);
     } catch (requestError) {
-      setError("I could not reach Rasa. Make sure `rasa run --enable-api --cors \"*\"` is running on port 5005.");
+      console.error("Document assistant request failed:", requestError);
+      setError(requestError.message || "I could not reach the document service. The backend may still be starting up. Please try again in a moment.");
     } finally {
       setBusy(false);
     }
@@ -161,10 +215,10 @@ function Workspace({ auth, onLogout, theme, onToggleTheme }) {
   async function loadUrl(event) {
     event.preventDefault();
     if (!url.trim()) return;
-    const message = `load this document ${url.trim()}`;
+    const message = url.trim();
     setUrl("");
     setPanelOpen(false);
-    await sendToRasa(message);
+    await sendMessage(message);
   }
 
   const quickActions = [
@@ -202,13 +256,13 @@ function Workspace({ auth, onLogout, theme, onToggleTheme }) {
           <button className="upload-trigger" type="button" onClick={() => setPanelOpen((open) => !open)}><span>+</span> Add a markdown source</button>
           {panelOpen && <section className="upload-panel"><div className="section-heading"><span>Add source</span><button className="close-button" type="button" onClick={() => setPanelOpen(false)}>×</button></div><form onSubmit={loadUrl}><label htmlFor="markdown-url">Raw markdown URL</label><div className="url-row"><input id="markdown-url" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://raw.githubusercontent.com/.../README.md" /><button type="submit" disabled={busy || !url.trim()}>Load</button></div></form><p className="panel-note">Use a raw GitHub README or any public markdown URL.</p></section>}
 
-          <section className="source-section"><div className="section-heading"><span>Shortcuts</span><span className="count">{quickActions.length}</span></div><div className="flow-grid">{quickActions.map(([label, prompt]) => <button key={prompt} type="button" onClick={() => sendToRasa(prompt)} disabled={busy}>{label}</button>)}</div></section>
+          <section className="source-section"><div className="section-heading"><span>Shortcuts</span><span className="count">{quickActions.length}</span></div><div className="flow-grid">{quickActions.map(([label, prompt]) => <button key={prompt} type="button" onClick={() => sendMessage(prompt)} disabled={busy}>{label}</button>)}</div></section>
         </aside>
 
         <section className="chat-panel">
-          <div className="chat-header"><div><h2>Chat with your documents</h2></div><div className="quick-actions"><button type="button" onClick={() => sendToRasa("summarize current document") } disabled={busy}>Summarize</button><button type="button" className="ghost-button" onClick={() => setMessages([])} disabled={!messages.length}>Clear history</button></div></div>
+          <div className="chat-header"><div><h2>Chat with your documents</h2></div><div className="quick-actions"><button type="button" onClick={() => sendMessage("summarize current document") } disabled={busy}>Summarize</button><button type="button" className="ghost-button" onClick={() => setMessages([])} disabled={!messages.length}>Clear history</button></div></div>
           <div className="chat-history" aria-live="polite">{messages.length ? messages.map((message, index) => <div className={`message ${message.role}`} key={`${message.role}-${index}`}><div className="message-label">{message.role === "user" ? "You" : "Assistant"}</div><div className="message-text"><MarkdownMessage text={message.text} /></div>{message.meta && <div className="message-meta">{message.meta}</div>}</div>) : <div className="empty-chat"><div className="empty-symbol">?</div><h3>Your conversation is clear</h3><p>Send a raw markdown URL or ask what this assistant can do.</p></div>}{busy && <div className="message assistant loading"><div className="message-label">Assistant</div><div className="loading-line" /><div className="loading-line short" /></div>}</div>
-          <form className="composer" onSubmit={(event) => { event.preventDefault(); sendToRasa(question); }}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a question or choose a shortcut..." disabled={busy} /><button type="submit" disabled={!question.trim() || busy}>Send <span>↗</span></button></form>
+          <form className="composer" onSubmit={(event) => { event.preventDefault(); sendMessage(question); }}><input value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a question or choose a shortcut..." disabled={busy} /><button type="submit" disabled={!question.trim() || busy}>Send <span>↗</span></button></form>
         </section>
       </div>
     </main>

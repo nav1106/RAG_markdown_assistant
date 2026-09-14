@@ -41,7 +41,6 @@ services:
     build:
       context: .
       args:
-        VITE_RASA_URL: http://localhost:5005
         VITE_RAG_AUTH_URL: http://localhost:3000
     ports:
       - "5173:80"
