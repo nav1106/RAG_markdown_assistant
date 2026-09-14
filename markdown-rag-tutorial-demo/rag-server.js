@@ -28,6 +28,7 @@ const DEFAULT_USER_ID = "default-user";
 const AUTH_USERS_FILE = path.join(__dirname, process.env.AUTH_USERS_FILE || "auth-users.json");
 const REQUIRE_AUTH = process.env.REQUIRE_AUTH === "true";
 const RASA_SERVICE_TOKEN = process.env.RASA_SERVICE_TOKEN;
+const AUTH_TOKEN_SECRET = process.env.AUTH_TOKEN_SECRET || RASA_SERVICE_TOKEN || "local-development-auth-token-secret";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
@@ -110,6 +111,46 @@ function normalizeEmail(value) {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
 }
 
+function base64UrlEncode(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function base64UrlDecode(value) {
+  return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+}
+
+function signAuthPayload(payload) {
+  return crypto.createHmac("sha256", AUTH_TOKEN_SECRET).update(payload).digest("base64url");
+}
+
+function createSignedAuthToken(user) {
+  const payload = base64UrlEncode({
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    picture: user.picture,
+    exp: Date.now() + 7 * 24 * 60 * 60 * 1000,
+  });
+  return `${payload}.${signAuthPayload(payload)}`;
+}
+
+function readSignedAuthToken(token) {
+  try {
+    const [payload, signature] = String(token || "").split(".");
+    if (!payload || !signature) return null;
+    const expectedSignature = signAuthPayload(payload);
+    const expected = Buffer.from(expectedSignature);
+    const actual = Buffer.from(signature);
+    if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) return null;
+
+    const user = base64UrlDecode(payload);
+    if (!user.id || !user.email || !user.exp || Date.now() > user.exp) return null;
+    return user;
+  } catch {
+    return null;
+  }
+}
+
 function createPasswordRecord(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const passwordHash = crypto.scryptSync(password, salt, 64).toString("hex");
@@ -149,17 +190,16 @@ function createOrUpdateGoogleUser(profile) {
 }
 
 function createAuthResponse(user) {
-  const token = crypto.randomBytes(32).toString("hex");
-  authTokens.set(token, user.id);
+  const token = createSignedAuthToken(user);
   return { token, user: { id: user.id, name: user.name, email: user.email, picture: user.picture } };
 }
 
 function getAuthenticatedUser(req) {
   const authorization = req.headers.authorization || "";
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
-  const userId = authTokens.get(token);
-  if (!userId) return null;
-  return [...authUsers.values()].find((user) => user.id === userId) || null;
+  const tokenUser = readSignedAuthToken(token);
+  if (!tokenUser) return null;
+  return [...authUsers.values()].find((user) => user.id === tokenUser.id) || tokenUser;
 }
 
 function getServiceUserId(req, suppliedUserId) {

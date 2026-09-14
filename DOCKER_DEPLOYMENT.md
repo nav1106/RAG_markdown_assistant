@@ -51,6 +51,7 @@ QDRANT_URL=https://your-qdrant-cluster-url
 QDRANT_API_KEY=your-qdrant-api-key
 QDRANT_COLLECTION=markdown_chunks_jina
 RASA_SERVICE_TOKEN=use-a-long-random-secret
+AUTH_TOKEN_SECRET=use-another-long-random-secret
 REQUIRE_AUTH=false
 FRONTEND_URL=http://localhost:5173
 ```
@@ -143,6 +144,7 @@ QDRANT_URL=https://your-qdrant-cluster-url
 QDRANT_API_KEY=your-qdrant-api-key
 QDRANT_COLLECTION=markdown_chunks_jina
 RASA_SERVICE_TOKEN=the-same-long-secret-used-by-rasa-actions
+AUTH_TOKEN_SECRET=another-long-random-secret-for-login-sessions
 REQUIRE_AUTH=false
 FRONTEND_URL=https://your-frontend-domain
 ```

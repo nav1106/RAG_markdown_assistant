@@ -39,7 +39,11 @@ async function authRequest(path, options = {}) {
     },
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Request failed with status ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(data.error || `Request failed with status ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -229,7 +233,14 @@ function App() {
   useEffect(() => { document.documentElement.dataset.theme = theme; localStorage.setItem("markdown-rag-theme", theme); }, [theme]);
 
   useEffect(() => {
-    if (auth?.token) authRequest("/auth/me").catch(() => { localStorage.removeItem(AUTH_KEY); setAuth(null); });
+    if (auth?.token) {
+      authRequest("/auth/me").catch((error) => {
+        if (error.status === 401 || error.status === 403) {
+          localStorage.removeItem(AUTH_KEY);
+          setAuth(null);
+        }
+      });
+    }
   }, [auth?.token]);
 
   function logout() {
